@@ -2,12 +2,26 @@ const $ = (selector) => document.querySelector(selector);
 const state = { saved: [], found: [], network: null, scanning: false, scanned: false };
 let toastTimer;
 
-function icon() {
-  const wrapper = document.createElement('span');
-  wrapper.className = 'device-icon';
-  wrapper.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>';
-  return wrapper;
+function setTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  const toggle = $('#theme-toggle');
+  const label = theme === 'dark' ? 'Włącz jasny motyw' : 'Włącz ciemny motyw';
+  toggle.textContent = theme === 'dark' ? '☀' : '☾';
+  toggle.setAttribute('aria-label', label);
+  toggle.title = label;
 }
+
+try {
+  setTheme(localStorage.getItem('wakeboard-theme') === 'light' ? 'light' : 'dark');
+} catch {
+  setTheme('dark');
+}
+
+$('#theme-toggle').addEventListener('click', () => {
+  const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+  setTheme(next);
+  try { localStorage.setItem('wakeboard-theme', next); } catch { /* Storage may be disabled. */ }
+});
 
 function toast(message, error = false) {
   const node = $('#toast');
@@ -35,10 +49,8 @@ async function api(path, options = {}) {
 
 function renderNetwork() {
   if (!state.network) return;
-  $('#sidebar-network').textContent = state.network.scan_range;
-  $('#sidebar-interface').textContent = `${state.network.interface} · ${state.network.address}`;
-  $('#network-status').textContent = 'Połączono';
-  $('#scan-description').textContent = `Skanowanie obejmuje sieć ${state.network.scan_range} przez ${state.network.interface}.`;
+  $('#network-status').textContent = state.network.scan_range;
+  $('#network-description').textContent = `Interfejs ${state.network.interface} · adres ${state.network.address}`;
 }
 
 function renderSaved() {
@@ -47,43 +59,35 @@ function renderSaved() {
   list.replaceChildren();
   $('#saved-empty').hidden = state.saved.length > 0;
   for (const device of state.saved) {
-    const card = document.createElement('article');
-    card.className = 'device-card';
+    const row = document.createElement('div');
+    row.className = 'saved-row';
+    const identity = document.createElement('div');
+    identity.className = 'saved-identity';
+    const name = document.createElement('strong');
+    name.className = 'saved-name';
+    name.textContent = device.name;
+    const meta = document.createElement('span');
+    meta.className = 'saved-meta';
+    meta.textContent = `${device.ip || 'Brak IP'} · ${device.mac}`;
+    identity.append(name, meta);
 
-    const top = document.createElement('div');
-    top.className = 'device-top';
-    top.append(icon());
+    const actions = document.createElement('div');
+    actions.className = 'saved-actions';
+    const wakeButton = document.createElement('button');
+    wakeButton.className = 'wake-button';
+    wakeButton.type = 'button';
+    wakeButton.textContent = 'Wybudź';
+    wakeButton.addEventListener('click', () => wakeDevice(device, wakeButton));
     const remove = document.createElement('button');
-    remove.className = 'device-menu';
+    remove.className = 'remove-button';
     remove.type = 'button';
     remove.title = 'Usuń urządzenie';
     remove.setAttribute('aria-label', `Usuń ${device.name}`);
     remove.textContent = '×';
     remove.addEventListener('click', () => removeDevice(device));
-    top.append(remove);
-    card.append(top);
-
-    const name = document.createElement('h3');
-    name.textContent = device.name;
-    card.append(name);
-    const address = document.createElement('p');
-    address.className = 'device-address';
-    address.textContent = device.ip || 'Adres IP niepodany';
-    card.append(address);
-
-    const bottom = document.createElement('div');
-    bottom.className = 'device-bottom';
-    const mac = document.createElement('span');
-    mac.className = 'mac-small';
-    mac.textContent = device.mac;
-    const wakeButton = document.createElement('button');
-    wakeButton.className = 'wake-button';
-    wakeButton.type = 'button';
-    wakeButton.textContent = '↗  Wybudź';
-    wakeButton.addEventListener('click', () => wakeDevice(device, wakeButton));
-    bottom.append(mac, wakeButton);
-    card.append(bottom);
-    list.append(card);
+    actions.append(wakeButton, remove);
+    row.append(identity, actions);
+    list.append(row);
   }
   renderFound();
 }
@@ -133,35 +137,39 @@ async function load() {
     state.network = result.network;
     renderNetwork();
     renderSaved();
-    scanNetwork();
+    scanNetwork(true);
   } catch (error) {
     $('#network-status').textContent = 'Brak sieci';
-    $('#sidebar-network').textContent = 'Brak połączenia';
-    $('#sidebar-interface').textContent = 'Sprawdź serwer i sieć';
+    $('#network-description').textContent = 'Sprawdź połączenie sieciowe i serwer.';
     $('#saved-empty').hidden = false;
     toast(error.message, true);
   }
 }
 
-async function scanNetwork() {
+async function scanNetwork(silent = false) {
   if (state.scanning) return;
   state.scanning = true;
   state.found = [];
   renderFound();
-  for (const button of [$('#scan-hero'), $('#scan-section'), $('#empty-scan')]) button.disabled = true;
+  const scanButton = $('#scan-button');
+  scanButton.disabled = true;
+  scanButton.querySelector('span').textContent = 'Skanowanie...';
+  $('#empty-scan').disabled = true;
   try {
     const result = await api('/api/scan', { method: 'POST' });
     state.found = result.devices;
     state.scanned = true;
     state.network = result.network;
     renderNetwork();
-    toast(`Skanowanie zakończone. Znaleziono ${state.found.length} urządzeń.`);
+    if (!silent) toast(`Skanowanie zakończone. Znaleziono ${state.found.length} urządzeń.`);
   } catch (error) {
     toast(error.message, true);
   } finally {
     state.scanning = false;
     renderFound();
-    for (const button of [$('#scan-hero'), $('#scan-section'), $('#empty-scan')]) button.disabled = false;
+    scanButton.disabled = false;
+    scanButton.querySelector('span').textContent = 'Skanuj sieć';
+    $('#empty-scan').disabled = false;
   }
 }
 
@@ -224,9 +232,8 @@ async function wakeDevice(device, button) {
   }
 }
 
-$('#today').textContent = new Intl.DateTimeFormat('pl-PL', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date());
-for (const button of [$('#scan-hero'), $('#scan-section'), $('#empty-scan')]) button.addEventListener('click', scanNetwork);
-for (const button of [$('#add-hero'), $('#add-device')]) button.addEventListener('click', () => openDialog());
+for (const button of [$('#scan-button'), $('#empty-scan')]) button.addEventListener('click', () => scanNetwork());
+$('#add-button').addEventListener('click', () => openDialog());
 $('#close-dialog').addEventListener('click', () => $('#add-dialog').close());
 $('#cancel-dialog').addEventListener('click', () => $('#add-dialog').close());
 $('#add-form').addEventListener('submit', addDevice);
