@@ -12,7 +12,7 @@ import subprocess
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -58,7 +58,7 @@ class Network:
         }
 
 
-def choose_network() -> Network:
+def available_networks() -> list[Network]:
     routes = run_ip("-4", "route", "show", "default")
     preferred = next((route.get("dev") for route in routes if route.get("dev")), None)
     interfaces = run_ip("-4", "addr", "show")
@@ -92,7 +92,44 @@ def choose_network() -> Network:
             )
     if not candidates:
         raise AppError("Nie znaleziono aktywnej sieci IPv4.", 503)
-    return next((item for item in candidates if item.interface == preferred), candidates[0])
+    return sorted(candidates, key=lambda item: item.interface != preferred)
+
+
+def choose_network(subnet: str = "", interface: str = "", networks: list[Network] | None = None) -> Network:
+    candidates = list(networks) if networks is not None else available_networks()
+    if interface:
+        candidates = [item for item in candidates if item.interface == interface]
+        if not candidates:
+            raise AppError("Wybrany interfejs sieciowy nie jest dostępny.")
+    if subnet:
+        if "/" not in subnet:
+            raise AppError("Podaj podsieć w formacie CIDR, np. 192.168.0.0/24.")
+        try:
+            requested = ipaddress.ip_network(subnet.strip(), strict=False)
+        except ValueError as exc:
+            raise AppError("Podaj poprawną podsieć IPv4, np. 192.168.0.0/24.") from exc
+        if not isinstance(requested, ipaddress.IPv4Network):
+            raise AppError("Podaj podsieć IPv4.")
+        if requested.num_addresses > 256:
+            raise AppError("Zakres skanowania może obejmować najwyżej 256 adresów (/24).")
+        candidates = [
+            item for item in candidates
+            if requested.subnet_of(ipaddress.IPv4Network(item.cidr))
+        ]
+        if not candidates:
+            raise AppError("Podsieć musi należeć do lokalnej sieci wybranego interfejsu.")
+        return replace(candidates[0], scan_network=requested)
+    if not candidates:
+        raise AppError("Nie znaleziono aktywnej sieci IPv4.", 503)
+    return candidates[0]
+
+
+def network_from_request(value: dict[str, Any]) -> Network:
+    subnet = value.get("subnet", "")
+    interface = value.get("interface", "")
+    if not isinstance(subnet, str) or not isinstance(interface, str):
+        raise AppError("Nieprawidłowy wybór sieci.")
+    return choose_network(subnet, interface)
 
 
 def normalize_mac(raw: str) -> str:
@@ -311,8 +348,12 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_asset("favicon.svg", "image/svg+xml")
         if path == "/api/state":
             def state() -> None:
-                network = choose_network()
-                self.send_json({"network": network.public(), "devices": devices.read()})
+                networks = available_networks()
+                self.send_json({
+                    "network": networks[0].public(),
+                    "networks": [item.public() for item in networks],
+                    "devices": devices.read(),
+                })
             return self.handle_api(state)
         self.send_error(404)
 
@@ -321,11 +362,12 @@ class Handler(BaseHTTPRequestHandler):
 
         def action() -> None:
             if path == "/api/scan":
-                network = choose_network()
+                value = self.read_json() if self.headers.get("Content-Length") else {}
+                network = network_from_request(value)
                 return self.send_json({"devices": scan(network), "network": network.public()})
             if path == "/api/devices":
                 value = self.read_json()
-                network = choose_network()
+                network = network_from_request(value)
                 ip = normalize_ip(str(value.get("ip", ""))) if value.get("ip") else ""
                 mac = (
                     normalize_mac(str(value["mac"]))
@@ -340,7 +382,7 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/wake":
                 value = self.read_json()
                 mac = normalize_mac(str(value.get("mac", "")))
-                network = choose_network()
+                network = network_from_request(value)
                 wake(mac, network)
                 return self.send_json({"ok": True})
             raise AppError("Nie znaleziono endpointu.", 404)

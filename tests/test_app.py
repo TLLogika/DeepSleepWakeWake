@@ -28,6 +28,27 @@ class WakeboardTests(unittest.TestCase):
         self.assertEqual(network.scan_network, ipaddress.ip_network("192.168.14.0/24"))
         self.assertEqual(network.broadcast, "192.168.255.255")
 
+    def test_manual_subnet_selects_matching_interface_and_limits_scan(self):
+        networks = [
+            app.Network("eth0", "192.168.0.20", "192.168.0.0/24", "192.168.0.255", ipaddress.ip_network("192.168.0.0/24")),
+            app.Network("eth1", "10.0.4.12", "10.0.0.0/16", "10.0.255.255", ipaddress.ip_network("10.0.4.0/24")),
+        ]
+        selected = app.choose_network("10.0.5.19/28", networks=networks)
+        self.assertEqual(selected.interface, "eth1")
+        self.assertEqual(selected.scan_network, ipaddress.ip_network("10.0.5.16/28"))
+        self.assertEqual(selected.broadcast, "10.0.255.255")
+        with self.assertRaises(app.AppError):
+            app.choose_network("10.0.5.16/28", interface="eth0", networks=networks)
+
+    def test_manual_subnet_rejects_remote_or_oversized_range(self):
+        network = app.Network(
+            "eth0", "192.168.0.20", "192.168.0.0/24", "192.168.0.255",
+            ipaddress.ip_network("192.168.0.0/24"),
+        )
+        for subnet in ("192.168.1.0/24", "192.168.0.0/23", "192.168.0.0", "fd00::/64"):
+            with self.subTest(subnet=subnet), self.assertRaises(app.AppError):
+                app.choose_network(subnet, networks=[network])
+
     def test_saved_devices_are_private_and_duplicate_mac_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "data" / "devices.json"

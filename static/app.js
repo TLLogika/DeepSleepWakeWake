@@ -53,6 +53,35 @@ function renderNetwork() {
   $('#network-description').textContent = `Interfejs ${state.network.interface} · adres ${state.network.address}`;
 }
 
+function networkChoice() {
+  return {
+    interface: $('#network-interface').value,
+    subnet: $('#network-subnet').value.trim(),
+  };
+}
+
+function saveNetworkChoice() {
+  try { localStorage.setItem('wakeboard-network', JSON.stringify(networkChoice())); } catch { /* Storage may be disabled. */ }
+}
+
+function showNetworkChoices(networks) {
+  const select = $('#network-interface');
+  const seen = new Set();
+  for (const network of networks) {
+    if (seen.has(network.interface)) continue;
+    seen.add(network.interface);
+    const option = document.createElement('option');
+    option.value = network.interface;
+    option.textContent = `${network.interface} · ${network.cidr}`;
+    select.append(option);
+  }
+  try {
+    const saved = JSON.parse(localStorage.getItem('wakeboard-network') || '{}');
+    if (typeof saved.interface === 'string' && seen.has(saved.interface)) select.value = saved.interface;
+    if (typeof saved.subnet === 'string') $('#network-subnet').value = saved.subnet;
+  } catch { /* Storage may be disabled or contain invalid data. */ }
+}
+
 function renderSaved() {
   $('#saved-count').textContent = state.saved.length;
   const list = $('#saved-list');
@@ -135,6 +164,7 @@ async function load() {
     const result = await api('/api/state');
     state.saved = result.devices;
     state.network = result.network;
+    showNetworkChoices(result.networks || [result.network]);
     renderNetwork();
     renderSaved();
     scanNetwork(true);
@@ -148,6 +178,8 @@ async function load() {
 
 async function scanNetwork(silent = false) {
   if (state.scanning) return;
+  const choice = networkChoice();
+  saveNetworkChoice();
   state.scanning = true;
   state.found = [];
   renderFound();
@@ -155,8 +187,10 @@ async function scanNetwork(silent = false) {
   scanButton.disabled = true;
   scanButton.querySelector('span').textContent = 'Skanowanie...';
   $('#empty-scan').disabled = true;
+  $('#network-interface').disabled = true;
+  $('#network-subnet').disabled = true;
   try {
-    const result = await api('/api/scan', { method: 'POST' });
+    const result = await api('/api/scan', { method: 'POST', body: JSON.stringify(choice) });
     state.found = result.devices;
     state.scanned = true;
     state.network = result.network;
@@ -170,6 +204,8 @@ async function scanNetwork(silent = false) {
     scanButton.disabled = false;
     scanButton.querySelector('span').textContent = 'Skanuj sieć';
     $('#empty-scan').disabled = false;
+    $('#network-interface').disabled = false;
+    $('#network-subnet').disabled = false;
   }
 }
 
@@ -195,6 +231,7 @@ async function addDevice(event) {
         name: $('#device-name').value,
         ip: $('#device-ip').value,
         mac: $('#device-mac').value,
+        ...networkChoice(),
       }),
     });
     state.saved.push(result.device);
@@ -223,7 +260,7 @@ async function removeDevice(device) {
 async function wakeDevice(device, button) {
   button.disabled = true;
   try {
-    await api('/api/wake', { method: 'POST', body: JSON.stringify({ mac: device.mac }) });
+    await api('/api/wake', { method: 'POST', body: JSON.stringify({ mac: device.mac, ...networkChoice() }) });
     toast(`Wysłano sygnał Wake-on-LAN do „${device.name}”.`);
   } catch (error) {
     toast(error.message, true);
@@ -233,6 +270,7 @@ async function wakeDevice(device, button) {
 }
 
 for (const button of [$('#scan-button'), $('#empty-scan')]) button.addEventListener('click', () => scanNetwork());
+for (const control of [$('#network-interface'), $('#network-subnet')]) control.addEventListener('change', saveNetworkChoice);
 $('#add-button').addEventListener('click', () => openDialog());
 $('#close-dialog').addEventListener('click', () => $('#add-dialog').close());
 $('#cancel-dialog').addEventListener('click', () => $('#add-dialog').close());

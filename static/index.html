@@ -32,6 +32,16 @@
         </div>
       </div>
 
+      <div class="network-controls" aria-label="Wybór podsieci">
+        <label for="network-interface">Interfejs
+          <select id="network-interface"><option value="">Automatycznie</option></select>
+        </label>
+        <label for="network-subnet">Podsieć do skanowania
+          <input id="network-subnet" type="text" inputmode="decimal" placeholder="Automatycznie, np. 192.168.0.0/24" autocomplete="off" spellcheck="false">
+        </label>
+        <span class="network-hint">Zakres CIDR do /24 w lokalnej sieci.</span>
+      </div>
+
       <section class="panel" id="urzadzenia" aria-labelledby="saved-title">
         <div class="panel-heading">
           <h2 id="saved-title">Zapisane urządzenia <span class="count" id="saved-count">0</span></h2>
