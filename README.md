@@ -12,6 +12,17 @@ python3 app.py
 
 Otwórz `http://127.0.0.1:8000` w przeglądarce. Możesz ustawić ten adres jako stronę startową.
 
+### Docker (Linux)
+
+Docker Compose uruchamia aplikację w sieci hosta, dzięki czemu skanowanie i pakiety Wake-on-LAN korzystają z lokalnej karty sieciowej. Zapisane urządzenia pozostają w katalogu `data/` na hoście.
+
+```bash
+mkdir -p data
+WAKEBOARD_UID=$(id -u) WAKEBOARD_GID=$(id -g) docker compose up -d --build
+```
+
+Panel będzie dostępny pod `http://127.0.0.1:8000`. Jeśli aplikacja uruchomiona bez Dockera zajmuje już port 8000, zatrzymaj ją albo wybierz inny port, np. `WAKEBOARD_PORT=8001 WAKEBOARD_UID=$(id -u) WAKEBOARD_GID=$(id -g) docker compose up -d --build`. Do zatrzymania kontenera użyj `docker compose down`. Zmienne `WAKEBOARD_UID` i `WAKEBOARD_GID` pozwalają kontenerowi odczytać i zapisać `data/devices.json` z uprawnieniami bieżącego użytkownika.
+
 Żeby serwer uruchamiał się automatycznie po zalogowaniu w systemie Linux z systemd, wykonaj jednorazowo:
 
 ```bash

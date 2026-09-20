@@ -1,0 +1,11 @@
+services:
+  wakeboard:
+    build: .
+    network_mode: host
+    user: "${WAKEBOARD_UID:-1000}:${WAKEBOARD_GID:-1000}"
+    cap_add:
+      - NET_RAW
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    command: ["python3", "app.py", "--host", "127.0.0.1", "--port", "${WAKEBOARD_PORT:-8000}"]
