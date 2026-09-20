@@ -107,7 +107,7 @@ function renderFound() {
   for (const device of state.found) {
     const row = document.createElement('tr');
     const name = document.createElement('td');
-    name.textContent = 'Urządzenie sieciowe';
+    name.textContent = device.hostname || 'Urządzenie sieciowe';
     const ip = document.createElement('td');
     ip.textContent = device.ip;
     const mac = document.createElement('td');
@@ -168,6 +168,7 @@ async function scanNetwork() {
 function openDialog(device = null) {
   $('#add-form').reset();
   if (device) {
+    $('#device-name').value = device.hostname || '';
     $('#device-ip').value = device.ip || '';
     $('#device-mac').value = device.mac || '';
   }

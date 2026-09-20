@@ -145,6 +145,29 @@ def probe(ip: str, interface: str) -> None:
     )
 
 
+def hostname_for(ip: str) -> str | None:
+    """Try system reverse DNS, then local mDNS, without delaying a scan indefinitely."""
+    for command in (("getent", "hosts", ip), ("avahi-resolve-address", ip)):
+        if not shutil.which(command[0]):
+            continue
+        try:
+            result = subprocess.run(
+                command, capture_output=True, text=True, timeout=1.5, check=False
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        if result.returncode:
+            continue
+        for line in result.stdout.splitlines():
+            parts = line.split()
+            if len(parts) < 2 or parts[0] != ip:
+                continue
+            hostname = parts[1].rstrip(".")[:253]
+            if hostname and hostname != ip and all(ord(char) >= 32 for char in hostname):
+                return hostname
+    return None
+
+
 def scan(network: Network) -> list[dict[str, str]]:
     if not shutil.which("ping"):
         raise AppError("Brakuje polecenia ping.", 503)
@@ -155,7 +178,14 @@ def scan(network: Network) -> list[dict[str, str]]:
     )
     with ThreadPoolExecutor(max_workers=32) as executor:
         list(executor.map(lambda ip: probe(ip, network.interface), hosts))
-    return neighbors(network)
+    found = neighbors(network)
+    if found:
+        with ThreadPoolExecutor(max_workers=min(32, len(found))) as executor:
+            hostnames = list(executor.map(hostname_for, (item["ip"] for item in found)))
+        for item, hostname in zip(found, hostnames):
+            if hostname:
+                item["hostname"] = hostname
+    return found
 
 
 def resolve_mac(ip: str, network: Network) -> str | None:

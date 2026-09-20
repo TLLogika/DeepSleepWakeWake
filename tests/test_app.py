@@ -2,6 +2,7 @@ import ipaddress
 import tempfile
 import unittest
 from pathlib import Path
+from subprocess import CompletedProcess
 from unittest.mock import patch
 
 import app
@@ -38,6 +39,27 @@ class WakeboardTests(unittest.TestCase):
                 devices.add({"name": "PC 2", "ip": "", "mac": item["mac"]})
             devices.remove(item["id"])
             self.assertEqual(devices.read(), [])
+
+    def test_hostname_uses_reverse_dns_result(self):
+        result = CompletedProcess(
+            ["getent", "hosts", "192.168.1.4"], 0, "192.168.1.4 pc.local.\n", ""
+        )
+        with patch.object(app.shutil, "which", return_value="/usr/bin/getent"), patch.object(
+            app.subprocess, "run", return_value=result
+        ):
+            self.assertEqual(app.hostname_for("192.168.1.4"), "pc.local")
+
+    def test_scan_includes_hostname_when_available(self):
+        network = app.Network(
+            "eth0", "192.168.1.2", "192.168.1.0/30", "192.168.1.3",
+            ipaddress.ip_network("192.168.1.0/30"),
+        )
+        with patch.object(app.shutil, "which", return_value="/usr/bin/ping"), patch.object(
+            app, "probe"
+        ), patch.object(app, "neighbors", return_value=[
+            {"ip": "192.168.1.1", "mac": "A0:B1:C2:D3:E4:F5"}
+        ]), patch.object(app, "hostname_for", return_value="pc.local"):
+            self.assertEqual(app.scan(network)[0]["hostname"], "pc.local")
 
 
 if __name__ == "__main__":
