@@ -1,0 +1,349 @@
+"""Local network discovery and Wake-on-LAN server for the dashboard."""
+
+from __future__ import annotations
+
+import argparse
+import ipaddress
+import json
+import re
+import shutil
+import socket
+import subprocess
+import threading
+import uuid
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
+from http import HTTPStatus
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from typing import Any
+
+
+ROOT = Path(__file__).resolve().parent
+DATA_FILE = ROOT / "data" / "devices.json"
+MAC_RE = re.compile(r"^[0-9a-fA-F]{12}$")
+
+
+class AppError(Exception):
+    def __init__(self, message: str, status: int = HTTPStatus.BAD_REQUEST):
+        super().__init__(message)
+        self.status = status
+
+
+def run_ip(*args: str) -> Any:
+    if not shutil.which("ip"):
+        raise AppError("Brakuje polecenia ip. Zainstaluj pakiet iproute2.", 503)
+    result = subprocess.run(
+        ["ip", "-j", *args], capture_output=True, text=True, timeout=5, check=False
+    )
+    if result.returncode:
+        raise AppError("Nie udało się odczytać ustawień sieci.", 503)
+    return json.loads(result.stdout or "[]")
+
+
+@dataclass(frozen=True)
+class Network:
+    interface: str
+    address: str
+    cidr: str
+    broadcast: str
+    scan_network: ipaddress.IPv4Network
+
+    def public(self) -> dict[str, str]:
+        return {
+            "interface": self.interface,
+            "address": self.address,
+            "cidr": self.cidr,
+            "scan_range": str(self.scan_network),
+        }
+
+
+def choose_network() -> Network:
+    routes = run_ip("-4", "route", "show", "default")
+    preferred = next((route.get("dev") for route in routes if route.get("dev")), None)
+    interfaces = run_ip("-4", "addr", "show")
+    candidates: list[Network] = []
+    for interface in interfaces:
+        name = interface.get("ifname", "")
+        if name == "lo":
+            continue
+        for address in interface.get("addr_info", []):
+            if address.get("family") != "inet" or address.get("scope") != "global":
+                continue
+            ip = address.get("local")
+            prefix = address.get("prefixlen")
+            if not ip or not isinstance(prefix, int):
+                continue
+            subnet = ipaddress.ip_interface(f"{ip}/{prefix}").network
+            # Limit discovery to 254 peers even on large LANs.
+            scan_network = (
+                ipaddress.ip_network(f"{ip}/24", strict=False)
+                if subnet.num_addresses > 256
+                else subnet
+            )
+            candidates.append(
+                Network(
+                    interface=name,
+                    address=ip,
+                    cidr=str(subnet),
+                    broadcast=address.get("broadcast", str(subnet.broadcast_address)),
+                    scan_network=scan_network,
+                )
+            )
+    if not candidates:
+        raise AppError("Nie znaleziono aktywnej sieci IPv4.", 503)
+    return next((item for item in candidates if item.interface == preferred), candidates[0])
+
+
+def normalize_mac(raw: str) -> str:
+    compact = raw.replace(":", "").replace("-", "").replace(".", "").strip()
+    if not MAC_RE.fullmatch(compact):
+        raise AppError("Podaj poprawny adres MAC, np. A0:B1:C2:D3:E4:F5.")
+    octets = bytes.fromhex(compact)
+    if octets == b"\x00" * 6 or octets == b"\xff" * 6 or octets[0] & 1:
+        raise AppError("Podaj adres MAC pojedynczego urządzenia.")
+    return ":".join(f"{part:02X}" for part in octets)
+
+
+def normalize_ip(raw: str) -> str:
+    try:
+        address = ipaddress.IPv4Address(raw.strip())
+    except ipaddress.AddressValueError as exc:
+        raise AppError("Podaj poprawny adres IPv4.") from exc
+    if not address.is_private:
+        raise AppError("Adres IP musi należeć do sieci prywatnej.")
+    return str(address)
+
+
+def neighbors(network: Network) -> list[dict[str, str]]:
+    entries = run_ip("-4", "neigh", "show", "dev", network.interface)
+    found: list[dict[str, str]] = []
+    for entry in entries:
+        ip = entry.get("dst", "")
+        raw_mac = entry.get("lladdr", "")
+        try:
+            if (
+                not raw_mac
+                or ip == network.address
+                or ipaddress.IPv4Address(ip) not in network.scan_network
+            ):
+                continue
+            mac = normalize_mac(raw_mac)
+        except (AppError, ipaddress.AddressValueError):
+            continue
+        found.append({"ip": ip, "mac": mac})
+    return sorted(found, key=lambda item: ipaddress.IPv4Address(item["ip"]))
+
+
+def probe(ip: str, interface: str) -> None:
+    subprocess.run(
+        ["ping", "-n", "-c", "1", "-W", "1", "-I", interface, ip],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        timeout=2,
+        check=False,
+    )
+
+
+def scan(network: Network) -> list[dict[str, str]]:
+    if not shutil.which("ping"):
+        raise AppError("Brakuje polecenia ping.", 503)
+    hosts = (
+        str(ip)
+        for ip in network.scan_network.hosts()
+        if str(ip) != network.address
+    )
+    with ThreadPoolExecutor(max_workers=32) as executor:
+        list(executor.map(lambda ip: probe(ip, network.interface), hosts))
+    return neighbors(network)
+
+
+def resolve_mac(ip: str, network: Network) -> str | None:
+    if ipaddress.IPv4Address(ip) not in network.scan_network:
+        return None
+    probe(ip, network.interface)
+    return next((item["mac"] for item in neighbors(network) if item["ip"] == ip), None)
+
+
+def magic_packet(mac: str) -> bytes:
+    device = bytes.fromhex(normalize_mac(mac).replace(":", ""))
+    return b"\xff" * 6 + device * 16
+
+
+def wake(mac: str, network: Network) -> None:
+    packet = magic_packet(mac)
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sender:
+            sender.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+            sender.bind((network.address, 0))
+            sender.sendto(packet, (network.broadcast, 9))
+    except OSError as exc:
+        raise AppError(f"Nie udało się wysłać pakietu: {exc}", 503) from exc
+
+
+class Devices:
+    def __init__(self, path: Path = DATA_FILE):
+        self.path = path
+        self.lock = threading.Lock()
+
+    def read(self) -> list[dict[str, str]]:
+        with self.lock:
+            if not self.path.exists():
+                return []
+            try:
+                data = json.loads(self.path.read_text())
+                if not isinstance(data, list):
+                    raise ValueError("invalid format")
+                return data
+            except (OSError, ValueError) as exc:
+                raise AppError("Nie udało się odczytać zapisanych urządzeń.", 500) from exc
+
+    def _write(self, items: list[dict[str, str]]) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = self.path.with_suffix(".tmp")
+        temporary.write_text(json.dumps(items, ensure_ascii=False, indent=2) + "\n")
+        temporary.chmod(0o600)
+        temporary.replace(self.path)
+
+    def add(self, item: dict[str, str]) -> dict[str, str]:
+        with self.lock:
+            items = json.loads(self.path.read_text()) if self.path.exists() else []
+            if any(existing["mac"] == item["mac"] for existing in items):
+                raise AppError("To urządzenie jest już zapisane.", 409)
+            item = {"id": uuid.uuid4().hex, **item}
+            items.append(item)
+            self._write(items)
+            return item
+
+    def remove(self, device_id: str) -> None:
+        with self.lock:
+            items = json.loads(self.path.read_text()) if self.path.exists() else []
+            remaining = [item for item in items if item["id"] != device_id]
+            if len(remaining) == len(items):
+                raise AppError("Nie znaleziono urządzenia.", 404)
+            self._write(remaining)
+
+
+devices = Devices()
+
+
+class Handler(BaseHTTPRequestHandler):
+    def send_json(self, value: Any, status: int = 200) -> None:
+        body = json.dumps(value, ensure_ascii=False).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def send_asset(self, name: str, content_type: str) -> None:
+        body = (ROOT / "static" / name).read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def read_json(self) -> dict[str, Any]:
+        try:
+            size = int(self.headers.get("Content-Length", "0"))
+        except ValueError as exc:
+            raise AppError("Nieprawidłowe żądanie.") from exc
+        if size <= 0 or size > 8192:
+            raise AppError("Nieprawidłowy rozmiar żądania.")
+        try:
+            value = json.loads(self.rfile.read(size))
+        except (UnicodeDecodeError, ValueError) as exc:
+            raise AppError("Nieprawidłowe dane JSON.") from exc
+        if not isinstance(value, dict):
+            raise AppError("Nieprawidłowe dane JSON.")
+        return value
+
+    def handle_api(self, action) -> None:
+        try:
+            action()
+        except AppError as exc:
+            self.send_json({"error": str(exc)}, exc.status)
+        except (OSError, subprocess.TimeoutExpired):
+            self.send_json({"error": "Nie udało się wykonać operacji sieciowej."}, 503)
+
+    def do_GET(self) -> None:
+        path = self.path.split("?", 1)[0]
+        if path == "/":
+            return self.send_asset("index.html", "text/html; charset=utf-8")
+        if path == "/style.css":
+            return self.send_asset("style.css", "text/css; charset=utf-8")
+        if path == "/app.js":
+            return self.send_asset("app.js", "text/javascript; charset=utf-8")
+        if path == "/favicon.svg":
+            return self.send_asset("favicon.svg", "image/svg+xml")
+        if path == "/api/state":
+            def state() -> None:
+                network = choose_network()
+                self.send_json({"network": network.public(), "devices": devices.read()})
+            return self.handle_api(state)
+        self.send_error(404)
+
+    def do_POST(self) -> None:
+        path = self.path.split("?", 1)[0]
+
+        def action() -> None:
+            if path == "/api/scan":
+                network = choose_network()
+                return self.send_json({"devices": scan(network), "network": network.public()})
+            if path == "/api/devices":
+                value = self.read_json()
+                network = choose_network()
+                ip = normalize_ip(str(value.get("ip", ""))) if value.get("ip") else ""
+                mac = (
+                    normalize_mac(str(value["mac"]))
+                    if value.get("mac")
+                    else resolve_mac(ip, network) if ip else None
+                )
+                if not mac:
+                    raise AppError("Podaj adres MAC. Nie udało się go ustalić z podanego IP.")
+                name = str(value.get("name", "")).strip()[:60] or ip or mac
+                item = devices.add({"name": name, "ip": ip, "mac": mac})
+                return self.send_json({"device": item}, 201)
+            if path == "/api/wake":
+                value = self.read_json()
+                mac = normalize_mac(str(value.get("mac", "")))
+                network = choose_network()
+                wake(mac, network)
+                return self.send_json({"ok": True})
+            raise AppError("Nie znaleziono endpointu.", 404)
+
+        self.handle_api(action)
+
+    def do_DELETE(self) -> None:
+        def action() -> None:
+            if not self.path.startswith("/api/devices/"):
+                raise AppError("Nie znaleziono endpointu.", 404)
+            device_id = self.path.removeprefix("/api/devices/")
+            if not re.fullmatch(r"[0-9a-f]{32}", device_id):
+                raise AppError("Nieprawidłowy identyfikator urządzenia.")
+            devices.remove(device_id)
+            self.send_json({"ok": True})
+
+        self.handle_api(action)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Lokalny panel Wake-on-LAN")
+    parser.add_argument("--host", default="127.0.0.1", help="Adres nasłuchiwania")
+    parser.add_argument("--port", type=int, default=8000, help="Port HTTP")
+    args = parser.parse_args()
+    server = ThreadingHTTPServer((args.host, args.port), Handler)
+    print(f"Panel dostępny pod adresem http://{args.host}:{args.port}")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
+
+
+if __name__ == "__main__":
+    main()
