@@ -1,4 +1,5 @@
 import ipaddress
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -49,6 +50,7 @@ class WakeboardTests(unittest.TestCase):
             with self.subTest(subnet=subnet), self.assertRaises(app.AppError):
                 app.choose_network(subnet, networks=[network])
 
+    @unittest.skipIf(os.name == "nt", "Test uprawnień plików wymaga Linuksa")
     def test_saved_devices_are_private_and_duplicate_mac_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "data" / "devices.json"
@@ -75,7 +77,7 @@ class WakeboardTests(unittest.TestCase):
             "eth0", "192.168.1.2", "192.168.1.0/30", "192.168.1.3",
             ipaddress.ip_network("192.168.1.0/30"),
         )
-        with patch.object(app.shutil, "which", return_value="/usr/bin/ping"), patch.object(
+        with patch.object(app.shutil, "which", side_effect=lambda name: "/usr/bin/ping" if name == "ping" else None), patch.object(
             app, "probe"
         ), patch.object(app, "neighbors", return_value=[
             {"ip": "192.168.1.1", "mac": "A0:B1:C2:D3:E4:F5"}
@@ -87,12 +89,57 @@ class WakeboardTests(unittest.TestCase):
             "eth0", "192.168.1.2", "192.168.1.0/30", "192.168.1.3",
             ipaddress.ip_network("192.168.1.0/30"),
         )
-        with patch.object(app.shutil, "which", return_value="/usr/bin/ping"), patch.object(
+        with patch.object(app.shutil, "which", side_effect=lambda name: "/usr/bin/ping" if name == "ping" else None), patch.object(
             app, "probe", return_value=True
         ), patch.object(app, "neighbors", return_value=[]), patch.object(
             app, "hostname_for", return_value="sensor.local"
         ):
             self.assertEqual(app.scan(network), [{"ip": "192.168.1.1", "hostname": "sensor.local"}])
+
+    def test_arp_scan_finds_hosts_without_ping_or_neighbor_entry(self):
+        network = app.Network(
+            "eth0", "192.168.1.2", "192.168.1.0/29", "192.168.1.7",
+            ipaddress.ip_network("192.168.1.0/29"),
+        )
+        output = (
+            "192.168.1.4\ta0:b1:c2:d3:e4:f5\n"
+            "192.168.1.4\ta0:b1:c2:d3:e4:f5\n"
+            "192.168.1.2\ta0:b1:c2:d3:e4:f6\n"
+            "192.168.2.1\ta0:b1:c2:d3:e4:f7\n"
+        )
+        result = CompletedProcess(["arp-scan"], 0, output, "")
+        with patch.object(app.shutil, "which", return_value="/usr/bin/arp-scan"), patch.object(
+            app.subprocess, "run", return_value=result
+        ) as command, patch.object(app, "probe") as probe, patch.object(
+            app, "neighbors"
+        ) as neighbors, patch.object(app, "hostname_for", return_value=None):
+            self.assertEqual(app.scan(network), [{"ip": "192.168.1.4", "mac": "A0:B1:C2:D3:E4:F5"}])
+            self.assertIn("--interface=eth0", command.call_args.args[0])
+            self.assertEqual(command.call_args.args[0][-1], "192.168.1.0/29")
+            probe.assert_not_called()
+            neighbors.assert_not_called()
+
+    def test_resolve_mac_queries_only_requested_ip_with_arp(self):
+        network = app.Network(
+            "eth0", "192.168.1.2", "192.168.1.0/29", "192.168.1.7",
+            ipaddress.ip_network("192.168.1.0/29"),
+        )
+        result = CompletedProcess(["arp-scan"], 0, "192.168.1.4\ta0:b1:c2:d3:e4:f5\n", "")
+        with patch.object(app.shutil, "which", return_value="/usr/bin/arp-scan"), patch.object(
+            app.subprocess, "run", return_value=result
+        ) as command:
+            self.assertEqual(app.resolve_mac("192.168.1.4", network), "A0:B1:C2:D3:E4:F5")
+            self.assertEqual(command.call_args.args[0][-1], "192.168.1.4")
+
+    def test_arp_scan_reports_permission_failure(self):
+        network = app.Network(
+            "eth0", "192.168.1.2", "192.168.1.0/29", "192.168.1.7",
+            ipaddress.ip_network("192.168.1.0/29"),
+        )
+        result = CompletedProcess(["arp-scan"], 1, "", "Operation not permitted")
+        with patch.object(app.subprocess, "run", return_value=result):
+            with self.assertRaisesRegex(app.AppError, "NET_RAW"):
+                app.arp_scan(network)
 
 
 if __name__ == "__main__":

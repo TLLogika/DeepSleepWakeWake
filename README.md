@@ -4,7 +4,7 @@ Jednostronicowy panel do wykrywania urządzeń w sieci lokalnej i wysyłania pak
 
 ## Uruchomienie
 
-Wymagane: Linux, Python 3.10+ oraz polecenia `ip` i `ping`.
+Wymagane: Linux, Python 3.10+ oraz polecenie `ip`. Zalecane jest `arp-scan` z uprawnieniem `CAP_NET_RAW`; bez niego aplikacja używa `ping` i tablicy sąsiadów, co może pominąć część urządzeń.
 
 ```bash
 python3 app.py
@@ -14,7 +14,7 @@ Otwórz `http://127.0.0.1:8000` w przeglądarce. Możesz ustawić ten adres jako
 
 ### Docker (Linux)
 
-Docker Compose uruchamia aplikację w sieci hosta, dzięki czemu skanowanie i pakiety Wake-on-LAN korzystają z lokalnej karty sieciowej. Zapisane urządzenia pozostają w katalogu `data/` na hoście.
+Docker Compose uruchamia aplikację w sieci hosta, dzięki czemu skanowanie i pakiety Wake-on-LAN korzystają z lokalnej karty sieciowej. Obraz zawiera `arp-scan` z uprawnieniem `CAP_NET_RAW`, więc skan działa także przy ustawieniu kontenera na zwykłego użytkownika. Zapisane urządzenia pozostają w katalogu `data/` na hoście.
 
 ```bash
 mkdir -p data
@@ -37,7 +37,7 @@ Jeśli chcesz otwierać panel z innych urządzeń w tej samej sieci, uruchom `py
 
 ## Jak działa
 
-- **Skanuj sieć** wysyła krótkie zapytania `ping` oraz pakiet UDP, który pobudza wykrywanie sąsiadów w lokalnej podsieci. Pokazuje urządzenia odpowiadające na ping lub widoczne w tablicy sąsiadów systemu i próbuje pobrać ich nazwy przez reverse DNS lub mDNS. Adresy MAC nie są wyświetlane w wynikach skanowania. Dla dużych podsieci skanuje bieżący zakres `/24`.
+- **Skanuj sieć** używa `arp-scan` do wykrywania urządzeń odpowiadających na ARP, także gdy blokują ping. Jeśli `arp-scan` nie jest zainstalowany, używa `ping` i tablicy sąsiadów systemu. Próbuje pobrać nazwy urządzeń przez reverse DNS lub mDNS. Adresy MAC nie są wyświetlane w wynikach skanowania. Dla dużych podsieci skanuje bieżący zakres `/24`.
 - **Podsieć do skanowania** pozwala wybrać interfejs i wpisać własny zakres IPv4 w formacie CIDR, np. `192.168.0.0/25`. Zakres musi należeć do sieci podłączonej do wybranego interfejsu i może obejmować najwyżej 256 adresów (`/24`). Puste pole przywraca automatyczny zakres. Wybrany interfejs jest używany także do wysłania Wake-on-LAN.
 - **Dodaj ręcznie** zapisuje nazwę, opcjonalny IPv4 i adres MAC. Gdy podasz tylko IP urządzenia, które jest aktualnie online, panel spróbuje sam odczytać MAC.
 - **Wybudź** wysyła pakiet magiczny UDP na port 9 pod adres rozgłoszeniowy lokalnej sieci.

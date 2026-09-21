@@ -172,6 +172,39 @@ def neighbors(network: Network) -> list[dict[str, str]]:
     return sorted(found, key=lambda item: ipaddress.IPv4Address(item["ip"]))
 
 
+def arp_scan_executable() -> str | None:
+    return shutil.which("arp-scan") or (
+        "/usr/sbin/arp-scan" if Path("/usr/sbin/arp-scan").is_file() else None
+    )
+
+
+def arp_scan(network: Network, target: str | None = None) -> list[dict[str, str]]:
+    command = [
+        arp_scan_executable() or "arp-scan", f"--interface={network.interface}", "--quiet", "--plain",
+        "--ignoredups", "--numeric", "--format=${ip}\t${mac}",
+        target or str(network.scan_network),
+    ]
+    result = subprocess.run(command, capture_output=True, text=True, timeout=20, check=False)
+    if result.returncode:
+        raise AppError(
+            "Skanowanie ARP nie powiodło się. Sprawdź uprawnienie NET_RAW i wybrany interfejs.",
+            503,
+        )
+    found: dict[str, dict[str, str]] = {}
+    for line in result.stdout.splitlines():
+        fields = line.split()
+        if len(fields) != 2:
+            continue
+        ip, raw_mac = fields
+        try:
+            if ip == network.address or ipaddress.IPv4Address(ip) not in network.scan_network:
+                continue
+            found[ip] = {"ip": ip, "mac": normalize_mac(raw_mac)}
+        except (AppError, ipaddress.AddressValueError):
+            continue
+    return sorted(found.values(), key=lambda item: ipaddress.IPv4Address(item["ip"]))
+
+
 def probe(ip: str, interface: str, source: str) -> bool:
     # A UDP packet prompts ARP resolution even when ICMP is blocked.
     try:
@@ -214,20 +247,23 @@ def hostname_for(ip: str) -> str | None:
 
 
 def scan(network: Network) -> list[dict[str, str]]:
-    if not shutil.which("ping"):
-        raise AppError("Brakuje polecenia ping.", 503)
-    hosts = [
-        str(ip)
-        for ip in network.scan_network.hosts()
-        if str(ip) != network.address
-    ]
-    with ThreadPoolExecutor(max_workers=32) as executor:
-        replies = list(executor.map(lambda ip: probe(ip, network.interface, network.address), hosts))
-    found_by_ip = {item["ip"]: item for item in neighbors(network)}
-    for ip, replied in zip(hosts, replies):
-        if replied and ip not in found_by_ip:
-            found_by_ip[ip] = {"ip": ip}
-    found = sorted(found_by_ip.values(), key=lambda item: ipaddress.IPv4Address(item["ip"]))
+    if arp_scan_executable():
+        found = arp_scan(network)
+    else:
+        if not shutil.which("ping"):
+            raise AppError("Brakuje polecenia arp-scan lub ping.", 503)
+        hosts = [
+            str(ip)
+            for ip in network.scan_network.hosts()
+            if str(ip) != network.address
+        ]
+        with ThreadPoolExecutor(max_workers=32) as executor:
+            replies = list(executor.map(lambda ip: probe(ip, network.interface, network.address), hosts))
+        found_by_ip = {item["ip"]: item for item in neighbors(network)}
+        for ip, replied in zip(hosts, replies):
+            if replied and ip not in found_by_ip:
+                found_by_ip[ip] = {"ip": ip}
+        found = sorted(found_by_ip.values(), key=lambda item: ipaddress.IPv4Address(item["ip"]))
     if found:
         with ThreadPoolExecutor(max_workers=min(32, len(found))) as executor:
             hostnames = list(executor.map(hostname_for, (item["ip"] for item in found)))
@@ -240,6 +276,8 @@ def scan(network: Network) -> list[dict[str, str]]:
 def resolve_mac(ip: str, network: Network) -> str | None:
     if ipaddress.IPv4Address(ip) not in network.scan_network:
         return None
+    if arp_scan_executable():
+        return next((item["mac"] for item in arp_scan(network, ip) if item["ip"] == ip), None)
     probe(ip, network.interface, network.address)
     return next((item["mac"] for item in neighbors(network) if item["ip"] == ip), None)
 

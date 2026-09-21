@@ -4,7 +4,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends iproute2 iputils-ping \
+    && apt-get install -y --no-install-recommends arp-scan iproute2 iputils-ping libcap2-bin \
+    && setcap cap_net_raw+p /usr/sbin/arp-scan \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
