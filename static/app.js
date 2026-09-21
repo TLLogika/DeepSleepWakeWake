@@ -1,5 +1,5 @@
 const $ = (selector) => document.querySelector(selector);
-const state = { saved: [], found: [], network: null, networkError: null, scanning: false, scanned: false, editingId: null };
+const state = { saved: [], found: [], network: null, networkError: null, scanning: false, scanned: false, editingId: null, deviceRevision: 0 };
 const macOctets = [...document.querySelectorAll('.mac-octet')];
 let toastTimer;
 
@@ -44,8 +44,18 @@ async function api(path, options = {}) {
     throw new Error('Brak połączenia z lokalnym serwerem.');
   }
   const result = await response.json();
-  if (!response.ok) throw new Error(result.error || 'Nie udało się wykonać operacji.');
+  if (!response.ok) {
+    const error = new Error(result.error || 'Nie udało się wykonać operacji.');
+    error.status = response.status;
+    throw error;
+  }
   return result;
+}
+
+function dialogError(message) {
+  const node = $('#dialog-message');
+  node.textContent = message;
+  node.hidden = false;
 }
 
 function renderNetwork() {
@@ -231,6 +241,7 @@ async function load() {
 async function scanNetwork(silent = false) {
   if (state.scanning) return;
   const choice = networkChoice();
+  const deviceRevision = state.deviceRevision;
   saveNetworkChoice();
   const previousFound = state.found;
   const previousScanned = state.scanned;
@@ -247,7 +258,7 @@ async function scanNetwork(silent = false) {
   try {
     const result = await api('/api/scan', { method: 'POST', body: JSON.stringify(choice) });
     state.found = result.devices;
-    state.saved = result.saved_devices;
+    if (deviceRevision === state.deviceRevision) state.saved = result.saved_devices;
     state.scanned = true;
     state.network = result.network;
     renderNetwork();
@@ -277,6 +288,7 @@ function openDialog(device = null, editing = false) {
     : 'Urządzenie może być wyłączone. Wpisz jego adres MAC, aby zapisać je do późniejszego wybudzenia.';
   $('#save-device').textContent = editing ? 'Zapisz zmiany' : 'Zapisz';
   $('#add-form').reset();
+  $('#dialog-message').hidden = true;
   macOctets.forEach((input) => { input.value = ''; });
   if (device) {
     $('#device-name').value = device.name || device.hostname || '';
@@ -302,36 +314,54 @@ async function addDevice(event) {
   event.preventDefault();
   const octets = macOctets.map((input) => input.value);
   if (octets.some(Boolean) && !octets.every((value) => /^[0-9A-F]{2}$/.test(value))) {
-    toast('Wpisz po dwa znaki 0–9 lub A–F w każdej z sześciu par MAC.', true);
+    dialogError('Wpisz po dwa znaki 0–9 lub A–F w każdej z sześciu par MAC.');
     macOctets.find((input) => !/^[0-9A-F]{2}$/.test(input.value))?.focus();
     return;
   }
   const save = $('#save-device');
   save.disabled = true;
+  $('#dialog-message').hidden = true;
+  const editingId = state.editingId;
+  const mac = octets.every(Boolean) ? octets.join(':') : '';
+  let result;
   try {
-    const editingId = state.editingId;
-    const result = await api(editingId ? `/api/devices/${editingId}` : '/api/devices', {
+    result = await api(editingId ? `/api/devices/${editingId}` : '/api/devices', {
       method: editingId ? 'PUT' : 'POST',
       body: JSON.stringify({
         name: $('#device-name').value,
         ip: $('#device-ip').value,
-        mac: octets.every(Boolean) ? octets.join(':') : '',
+        mac,
         ...networkChoice(),
       }),
     });
-    if (editingId) {
-      state.saved = state.saved.map((item) => item.id === editingId ? result.device : item);
-    } else {
-      state.saved.push(result.device);
-    }
-    renderSaved();
-    $('#add-dialog').close();
-    toast(editingId ? 'Zmiany zostały zapisane.' : 'Urządzenie zostało zapisane.');
   } catch (error) {
-    toast(error.message, true);
+    if (!editingId && mac && (error.status === 409 || !error.status)) {
+      try {
+        const current = await api('/api/state');
+        if (current.devices.some((device) => device.mac === mac)) {
+          state.saved = current.devices;
+          state.deviceRevision += 1;
+          $('#add-dialog').close();
+          toast('Urządzenie jest już na liście.');
+          renderSaved();
+          return;
+        }
+      } catch { /* Show the original save error below. */ }
+    }
+    dialogError(error.message);
+    return;
   } finally {
     save.disabled = false;
   }
+  state.deviceRevision += 1;
+  if (editingId) {
+    state.saved = state.saved.map((item) => item.id === editingId ? result.device : item);
+  } else if (!state.saved.some((item) => item.id === result.device.id)) {
+    state.saved.push(result.device);
+  }
+  $('#add-dialog').close();
+  toast(editingId ? 'Zmiany zostały zapisane.' : 'Urządzenie zostało zapisane.');
+  renderSaved();
 }
 
 macOctets.forEach((input, index) => {
@@ -362,6 +392,7 @@ async function removeDevice(device) {
   if (!confirm(`Usunąć „${device.name}” z zapisanych urządzeń?`)) return;
   try {
     await api(`/api/devices/${device.id}`, { method: 'DELETE' });
+    state.deviceRevision += 1;
     state.saved = state.saved.filter((item) => item.id !== device.id);
     renderSaved();
     toast('Urządzenie zostało usunięte.');

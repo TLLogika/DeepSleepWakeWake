@@ -138,6 +138,7 @@ dialog input::placeholder { color: var(--faint); }
 dialog .mac-octets input { width: 0; min-width: 0; flex: 1 1 0; padding: 0 2px; text-align: center; font-family: ui-monospace, Consolas, monospace; font-size: 14px; text-transform: uppercase; }
 .mac-octets span { color: var(--faint); font-weight: 700; }
 .mac-hint { margin: 6px 0 0; color: var(--faint); font-size: 11px; line-height: 1.4; }
+.dialog-message { margin: 12px 0 0; color: var(--danger); font-size: 12px; line-height: 1.4; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 21px; }
 .toast { position: fixed; right: 22px; bottom: 22px; z-index: 10; max-width: min(380px, calc(100vw - 44px)); padding: 11px 14px; border-radius: 7px; background: #395943; color: #fff; box-shadow: 0 10px 30px var(--shadow); font-size: 12px; }
 .toast.error { background: #9b4141; }
