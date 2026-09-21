@@ -39,6 +39,7 @@
         <label for="network-subnet">Podsieć do skanowania
           <input id="network-subnet" type="text" inputmode="decimal" placeholder="Automatycznie, np. 192.168.0.0/24" autocomplete="off" spellcheck="false">
         </label>
+        <button class="button button-secondary" id="reset-network" type="button">Pełny zakres</button>
         <span class="network-hint">Zakres CIDR do /24 w lokalnej sieci.</span>
       </div>
 
@@ -60,24 +61,24 @@
         </div>
         <div class="table-scroll">
           <table>
-            <thead><tr><th>Urządzenie</th><th>IP</th><th>MAC</th><th class="actions-column">Akcja</th></tr></thead>
-            <tbody id="scan-results"><tr><td colspan="4" class="table-empty">Skanowanie rozpocznie się automatycznie.</td></tr></tbody>
+            <thead><tr><th>Urządzenie</th><th>IP</th><th class="actions-column">Akcja</th></tr></thead>
+            <tbody id="scan-results"><tr><td colspan="3" class="table-empty">Skanowanie rozpocznie się automatycznie.</td></tr></tbody>
           </table>
         </div>
-        <p class="panel-note">Nie każde urządzenie odpowiada na skanowanie. Wyłączony komputer możesz dodać ręcznie, podając jego MAC.</p>
+        <p class="panel-note">Skan pokazuje urządzenia osiągalne z tego komputera. Sieć gościnna, izolacja Wi-Fi lub wyłączone urządzenie mogą ukryć sprzęt; wtedy dodaj go ręcznie.</p>
       </section>
     </main>
 
     <dialog id="add-dialog" aria-labelledby="dialog-title">
       <form id="add-form" method="dialog">
         <div class="dialog-heading"><h2 id="dialog-title">Dodaj urządzenie</h2><button id="close-dialog" class="close-button" type="button" aria-label="Zamknij">×</button></div>
-        <p class="dialog-intro">Do wybudzenia potrzebny jest adres MAC. Jeśli urządzenie jest włączone, możesz podać samo IP.</p>
+        <p class="dialog-intro">Do wybudzenia potrzebny jest adres MAC. Możesz podać samo IP, jeśli serwer potrafi odczytać z niego MAC.</p>
         <label for="device-name">Nazwa <span>opcjonalnie</span></label>
         <input id="device-name" name="name" type="text" maxlength="60" placeholder="np. Komputer biurowy" autocomplete="off">
         <label for="device-ip">Adres IP <span>opcjonalnie</span></label>
         <input id="device-ip" name="ip" type="text" inputmode="decimal" placeholder="np. 192.168.0.70" autocomplete="off">
         <label for="device-mac">Adres MAC</label>
-        <input id="device-mac" name="mac" type="text" placeholder="np. 48:4D:7E:EA:71:F0" autocomplete="off">
+        <input id="device-mac" name="mac" type="text" autocomplete="off">
         <div class="dialog-actions"><button class="button button-secondary" id="cancel-dialog" type="button">Anuluj</button><button class="button button-primary" id="save-device" type="submit">Zapisz</button></div>
       </form>
     </dialog>

@@ -128,7 +128,7 @@ function renderFound() {
   if (!state.found.length) {
     const row = document.createElement('tr');
     const cell = document.createElement('td');
-    cell.colSpan = 4;
+    cell.colSpan = 3;
     cell.className = 'table-empty';
     cell.textContent = state.scanning
       ? 'Skanowanie trwa. To może potrwać kilka sekund…'
@@ -143,18 +143,16 @@ function renderFound() {
     name.textContent = device.hostname || 'Urządzenie sieciowe';
     const ip = document.createElement('td');
     ip.textContent = device.ip;
-    const mac = document.createElement('td');
-    mac.textContent = device.mac;
     const action = document.createElement('td');
     action.className = 'action-cell';
     const button = document.createElement('button');
-    const saved = state.saved.some((item) => item.mac === device.mac);
+    const saved = device.mac && state.saved.some((item) => item.mac === device.mac);
     button.className = `table-button${saved ? ' saved' : ''}`;
-    button.textContent = saved ? 'Zapisane' : '+ Dodaj';
+    button.textContent = saved ? 'Zapisane' : (device.mac ? '+ Dodaj' : 'Dodaj ręcznie');
     button.disabled = saved;
     if (!saved) button.addEventListener('click', () => openDialog(device));
     action.append(button);
-    row.append(name, ip, mac, action);
+    row.append(name, ip, action);
     body.append(row);
   }
 }
@@ -189,6 +187,7 @@ async function scanNetwork(silent = false) {
   $('#empty-scan').disabled = true;
   $('#network-interface').disabled = true;
   $('#network-subnet').disabled = true;
+  $('#reset-network').disabled = true;
   try {
     const result = await api('/api/scan', { method: 'POST', body: JSON.stringify(choice) });
     state.found = result.devices;
@@ -206,6 +205,7 @@ async function scanNetwork(silent = false) {
     $('#empty-scan').disabled = false;
     $('#network-interface').disabled = false;
     $('#network-subnet').disabled = false;
+    $('#reset-network').disabled = false;
   }
 }
 
@@ -271,6 +271,12 @@ async function wakeDevice(device, button) {
 
 for (const button of [$('#scan-button'), $('#empty-scan')]) button.addEventListener('click', () => scanNetwork());
 for (const control of [$('#network-interface'), $('#network-subnet')]) control.addEventListener('change', saveNetworkChoice);
+$('#reset-network').addEventListener('click', () => {
+  $('#network-interface').value = '';
+  $('#network-subnet').value = '';
+  saveNetworkChoice();
+  scanNetwork();
+});
 $('#add-button').addEventListener('click', () => openDialog());
 $('#close-dialog').addEventListener('click', () => $('#add-dialog').close());
 $('#cancel-dialog').addEventListener('click', () => $('#add-dialog').close());

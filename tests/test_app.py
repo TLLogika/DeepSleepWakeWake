@@ -82,6 +82,18 @@ class WakeboardTests(unittest.TestCase):
         ]), patch.object(app, "hostname_for", return_value="pc.local"):
             self.assertEqual(app.scan(network)[0]["hostname"], "pc.local")
 
+    def test_scan_keeps_ping_reply_without_neighbor_mac(self):
+        network = app.Network(
+            "eth0", "192.168.1.2", "192.168.1.0/30", "192.168.1.3",
+            ipaddress.ip_network("192.168.1.0/30"),
+        )
+        with patch.object(app.shutil, "which", return_value="/usr/bin/ping"), patch.object(
+            app, "probe", return_value=True
+        ), patch.object(app, "neighbors", return_value=[]), patch.object(
+            app, "hostname_for", return_value="sensor.local"
+        ):
+            self.assertEqual(app.scan(network), [{"ip": "192.168.1.1", "hostname": "sensor.local"}])
+
 
 if __name__ == "__main__":
     unittest.main()

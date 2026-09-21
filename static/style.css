@@ -68,6 +68,7 @@ h1 { font-size: 27px; line-height: 1.15; letter-spacing: -.8px; margin-bottom: 7
 .network-controls select, .network-controls input { height: 36px; padding: 0 10px; border: 1px solid var(--border); border-radius: 6px; outline: none; background: var(--surface); color: var(--text); font-size: 12px; }
 .network-controls select:focus-visible, .network-controls input:focus-visible { border-color: var(--accent); outline: 2px solid var(--accent); outline-offset: 2px; }
 .network-controls input { width: min(290px, 100%); }
+.network-controls .button { min-height: 36px; }
 .network-controls input::placeholder { color: var(--faint); }
 .network-hint { padding-bottom: 10px; color: var(--faint); font-size: 11px; }
 
@@ -134,6 +135,7 @@ dialog input::placeholder { color: var(--faint); }
   .network-controls { margin-top: -2px; }
   .network-controls label { width: 100%; }
   .network-controls select, .network-controls input { width: 100%; }
+  .network-controls .button { width: 100%; }
   .network-hint { padding-bottom: 0; }
   .network-indicator { max-width: 50vw; overflow: hidden; text-overflow: ellipsis; }
   .saved-row, .panel-heading, th, td, .panel-note { padding-left: 14px; padding-right: 14px; }
@@ -147,8 +149,8 @@ dialog input::placeholder { color: var(--faint); }
   tbody tr:last-child { border-bottom: 0; }
   tbody td { display: block; padding: 0; border: 0; font-size: 11px; }
   tbody td:first-child { grid-column: 1; font-size: 12px; }
-  tbody td:nth-child(2), tbody td:nth-child(3) { grid-column: 1; }
-  tbody td.actions-column { grid-column: 2; grid-row: 1 / 4; align-self: center; }
+  tbody td:nth-child(2) { grid-column: 1; }
+  tbody td.action-cell { grid-column: 2; grid-row: 1 / 3; align-self: center; }
   tbody td.table-empty { grid-column: 1 / -1; padding: 8px 0; text-align: left; }
 }
 

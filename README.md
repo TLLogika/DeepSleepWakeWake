@@ -23,7 +23,7 @@ WAKEBOARD_UID=$(id -u) WAKEBOARD_GID=$(id -g) docker compose up -d --build
 
 Jeśli pojawi się błąd dostępu do `/var/run/docker.sock`, użyj `sudo WAKEBOARD_UID=$(id -u) WAKEBOARD_GID=$(id -g) docker compose up -d --build` (oraz `sudo docker compose down` przy zatrzymywaniu).
 
-Panel będzie dostępny pod `http://127.0.0.1:8000`. Jeśli aplikacja uruchomiona bez Dockera zajmuje już port 8000, zatrzymaj ją albo wybierz inny port, np. `WAKEBOARD_PORT=8001 WAKEBOARD_UID=$(id -u) WAKEBOARD_GID=$(id -g) docker compose up -d --build`. Do zatrzymania kontenera użyj `docker compose down`. Zmienne `WAKEBOARD_UID` i `WAKEBOARD_GID` pozwalają kontenerowi odczytać i zapisać `data/devices.json` z uprawnieniami bieżącego użytkownika.
+Domyślnie kontener nasłuchuje na `0.0.0.0:9000`. Panel otworzysz na tym komputerze pod `http://127.0.0.1:9000`, a z innego urządzenia w LAN pod `http://ADRES_IP_KOMPUTERA:9000`. Jeśli potrzebujesz innego adresu lub portu, ustaw `WAKEBOARD_HOST` i `WAKEBOARD_PORT` przy uruchamianiu Compose. Panel jest dostępny dla innych użytkowników tej sieci, więc uruchamiaj go w zaufanej sieci. Do zatrzymania kontenera użyj `docker compose down`. Zmienne `WAKEBOARD_UID` i `WAKEBOARD_GID` pozwalają kontenerowi odczytać i zapisać `data/devices.json` z uprawnieniami bieżącego użytkownika.
 
 Żeby serwer uruchamiał się automatycznie po zalogowaniu w systemie Linux z systemd, wykonaj jednorazowo:
 
@@ -37,9 +37,9 @@ Jeśli chcesz otwierać panel z innych urządzeń w tej samej sieci, uruchom `py
 
 ## Jak działa
 
-- **Skanuj sieć** wysyła krótkie zapytania `ping` do adresów w lokalnej podsieci, odczytuje adresy MAC z tablicy sąsiadów systemu i próbuje pobrać nazwy hostów przez reverse DNS lub mDNS. Dla dużych podsieci skanuje bieżący zakres `/24`.
+- **Skanuj sieć** wysyła krótkie zapytania `ping` oraz pakiet UDP, który pobudza wykrywanie sąsiadów w lokalnej podsieci. Pokazuje urządzenia odpowiadające na ping lub widoczne w tablicy sąsiadów systemu i próbuje pobrać ich nazwy przez reverse DNS lub mDNS. Adresy MAC nie są wyświetlane w wynikach skanowania. Dla dużych podsieci skanuje bieżący zakres `/24`.
 - **Podsieć do skanowania** pozwala wybrać interfejs i wpisać własny zakres IPv4 w formacie CIDR, np. `192.168.0.0/25`. Zakres musi należeć do sieci podłączonej do wybranego interfejsu i może obejmować najwyżej 256 adresów (`/24`). Puste pole przywraca automatyczny zakres. Wybrany interfejs jest używany także do wysłania Wake-on-LAN.
 - **Dodaj ręcznie** zapisuje nazwę, opcjonalny IPv4 i adres MAC. Gdy podasz tylko IP urządzenia, które jest aktualnie online, panel spróbuje sam odczytać MAC.
 - **Wybudź** wysyła pakiet magiczny UDP na port 9 pod adres rozgłoszeniowy lokalnej sieci.
 
-Wake-on-LAN musi być włączone na urządzeniu docelowym w BIOS/UEFI oraz w ustawieniach karty sieciowej. Nie każde urządzenie odpowiada na skanowanie lub udostępnia nazwę hosta, dlatego ręczne dodawanie MAC jest przydatne także dla sprzętu wyłączonego. Zapisane urządzenia znajdują się w `data/devices.json`; ten katalog oraz `.env` są ignorowane przez Git.
+Wake-on-LAN musi być włączone na urządzeniu docelowym w BIOS/UEFI oraz w ustawieniach karty sieciowej. Skan wykrywa urządzenia osiągalne z komputera z serwerem; sieć gościnna, izolacja klientów Wi-Fi i wyłączony sprzęt mogą ukryć inne urządzenia. Nie każde urządzenie udostępnia nazwę hosta, dlatego ręczne dodawanie MAC jest przydatne. Zapisane urządzenia znajdują się w `data/devices.json`; ten katalog oraz `.env` są ignorowane przez Git.
