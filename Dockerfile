@@ -10,6 +10,7 @@ RUN apt-get update \
 
 WORKDIR /app
 COPY app.py ./
+COPY version.json ./
 COPY static/ ./static/
 COPY docker-entrypoint.sh /usr/local/bin/wakeboard-entrypoint
 RUN sed -i 's/\r$//' /usr/local/bin/wakeboard-entrypoint \

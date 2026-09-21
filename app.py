@@ -22,6 +22,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parent
 DATA_FILE = ROOT / "data" / "devices.json"
+VERSION_FILE = ROOT / "version.json"
 MAC_RE = re.compile(r"^[0-9a-fA-F]{12}$")
 
 
@@ -386,6 +387,18 @@ def state_payload() -> dict[str, Any]:
     }
 
 
+def release_info() -> dict[str, str]:
+    try:
+        value = json.loads(VERSION_FILE.read_text(encoding="utf-8"))
+        if not isinstance(value, dict) or not all(
+            isinstance(value.get(key), str) for key in ("name", "released_at")
+        ):
+            raise ValueError("invalid release info")
+        return {"name": value["name"], "released_at": value["released_at"]}
+    except (OSError, ValueError) as exc:
+        raise AppError("Nie udało się odczytać informacji o wersji.", 500) from exc
+
+
 class Handler(BaseHTTPRequestHandler):
     def send_json(self, value: Any, status: int = 200) -> None:
         body = json.dumps(value, ensure_ascii=False).encode()
@@ -438,6 +451,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_asset("app.js", "text/javascript; charset=utf-8")
         if path == "/favicon.svg":
             return self.send_asset("favicon.svg", "image/svg+xml")
+        if path == "/api/version":
+            return self.handle_api(lambda: self.send_json(release_info()))
         if path == "/api/state":
             return self.handle_api(lambda: self.send_json(state_payload()))
         self.send_error(404)

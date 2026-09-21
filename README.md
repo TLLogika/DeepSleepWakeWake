@@ -25,6 +25,10 @@ Jeśli pojawi się błąd dostępu do `/var/run/docker.sock`, użyj `sudo WAKEBO
 
 Kontener nasłuchuje na `0.0.0.0:9000`. Panel otworzysz na tym komputerze pod `http://127.0.0.1:9000`, a z innego urządzenia w LAN pod `http://ADRES_IP_KOMPUTERA:9000`. Panel jest dostępny dla innych użytkowników tej sieci, więc uruchamiaj go w zaufanej sieci. Do zatrzymania kontenera użyj `docker compose down`. Zmienne `WAKEBOARD_UID` i `WAKEBOARD_GID` pozwalają kontenerowi odczytać i zapisać `data/devices.json` z uprawnieniami bieżącego użytkownika.
 
+### Wersja
+
+Numer wydania i data z godziną oraz minutą są zapisane w `version.json` i widoczne na dole panelu. Czas jest podawany dla strefy `Europe/Warsaw`. Przed każdym następnym wydaniem uruchom `python3 scripts/bump-version.py`; skrypt zwiększy numer, np. z `1.0v` na `1.1v`, i zapisze aktualny czas wydania.
+
 Żeby serwer uruchamiał się automatycznie po zalogowaniu w systemie Linux z systemd, wykonaj jednorazowo:
 
 ```bash

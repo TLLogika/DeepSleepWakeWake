@@ -234,6 +234,19 @@ function openDialog(device = null) {
   $('#device-name').focus();
 }
 
+async function loadVersion() {
+  try {
+    const release = await api('/api/version');
+    const date = new Intl.DateTimeFormat('pl-PL', {
+      timeZone: 'Europe/Warsaw', day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit',
+    }).format(new Date(release.released_at));
+    $('#version-info').textContent = `Wersja ${release.name} · ${date}`;
+  } catch {
+    $('#version-info').textContent = 'Wersja niedostępna';
+  }
+}
+
 async function addDevice(event) {
   event.preventDefault();
   const octets = macOctets.map((input) => input.value);
@@ -326,3 +339,4 @@ $('#close-dialog').addEventListener('click', () => $('#add-dialog').close());
 $('#cancel-dialog').addEventListener('click', () => $('#add-dialog').close());
 $('#add-form').addEventListener('submit', addDevice);
 load();
+loadVersion();

@@ -3,3 +3,4 @@
 !static/
 !static/**
 !docker-entrypoint.sh
+!version.json

@@ -58,6 +58,7 @@ button:disabled { cursor: wait; opacity: .65; }
 .theme-toggle:hover { border-color: var(--accent); }
 
 .container { max-width: 1112px; margin: 0 auto; padding: 34px 24px 70px; }
+.app-footer { max-width: 1112px; margin: 0 auto; padding: 0 24px 24px; color: var(--faint); font-size: 11px; text-align: right; }
 .page-heading { display: flex; justify-content: space-between; align-items: end; gap: 24px; margin-bottom: 26px; }
 h1, h2, p { margin-top: 0; }
 h1 { font-size: 27px; line-height: 1.15; letter-spacing: -.8px; margin-bottom: 7px; }

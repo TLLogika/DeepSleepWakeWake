@@ -1,7 +1,9 @@
 import ipaddress
 import os
+import runpy
 import tempfile
 import unittest
+from datetime import datetime
 from pathlib import Path
 from subprocess import CompletedProcess
 from unittest.mock import patch
@@ -10,6 +12,17 @@ import app
 
 
 class WakeboardTests(unittest.TestCase):
+    def test_release_metadata_has_version_and_minute_precision(self):
+        release = app.release_info()
+        self.assertRegex(release["name"], r"^\d+\.\d+v$")
+        timestamp = datetime.fromisoformat(release["released_at"])
+        self.assertIsNotNone(timestamp.tzinfo)
+        self.assertEqual(timestamp.second, 0)
+
+    def test_next_release_advances_version(self):
+        next_name = runpy.run_path(str(app.ROOT / "scripts" / "bump-version.py"))["next_name"]
+        self.assertEqual(next_name("1.0v"), "1.1v")
+
     def test_magic_packet_has_exact_wol_format(self):
         mac = bytes.fromhex("A0B1C2D3E4F5")
         self.assertEqual(app.magic_packet("a0-b1-c2-d3-e4-f5"), b"\xff" * 6 + mac * 16)
