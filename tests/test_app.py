@@ -36,6 +36,13 @@ class WakeboardTests(unittest.TestCase):
                 "network": None, "networks": [], "network_error": "Brak sieci", "devices": saved,
             })
 
+    def test_storage_permission_error_is_not_reported_as_network_failure(self):
+        devices = app.Devices(Path("data/devices.json"))
+        with patch.object(Path, "mkdir", side_effect=PermissionError("denied")):
+            with self.assertRaisesRegex(app.AppError, "Brak prawa zapisu w katalogu data") as error:
+                devices._write([])
+        self.assertEqual(error.exception.status, 500)
+
     def test_large_network_scan_stays_within_local_24(self):
         routes = [{"dev": "eth0"}]
         addresses = [{

@@ -320,28 +320,38 @@ class Devices:
         self.path = path
         self.lock = threading.Lock()
 
-    def read(self) -> list[dict[str, str]]:
-        with self.lock:
+    def _load(self) -> list[dict[str, str]]:
+        try:
             if not self.path.exists():
                 return []
-            try:
-                data = json.loads(self.path.read_text())
-                if not isinstance(data, list):
-                    raise ValueError("invalid format")
-                return data
-            except (OSError, ValueError) as exc:
-                raise AppError("Nie udało się odczytać zapisanych urządzeń.", 500) from exc
+            data = json.loads(self.path.read_text())
+            if not isinstance(data, list):
+                raise ValueError("invalid format")
+            return data
+        except PermissionError as exc:
+            raise AppError("Brak dostępu do data/devices.json. Sprawdź uprawnienia katalogu data.", 500) from exc
+        except (OSError, ValueError) as exc:
+            raise AppError("Nie udało się odczytać zapisanych urządzeń.", 500) from exc
+
+    def read(self) -> list[dict[str, str]]:
+        with self.lock:
+            return self._load()
 
     def _write(self, items: list[dict[str, str]]) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = self.path.with_suffix(".tmp")
-        temporary.write_text(json.dumps(items, ensure_ascii=False, indent=2) + "\n")
-        temporary.chmod(0o600)
-        temporary.replace(self.path)
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = self.path.with_suffix(".tmp")
+            temporary.write_text(json.dumps(items, ensure_ascii=False, indent=2) + "\n")
+            temporary.chmod(0o600)
+            temporary.replace(self.path)
+        except PermissionError as exc:
+            raise AppError("Brak prawa zapisu w katalogu data. Sprawdź jego uprawnienia.", 500) from exc
+        except OSError as exc:
+            raise AppError("Nie udało się zapisać urządzenia w katalogu data.", 500) from exc
 
     def add(self, item: dict[str, str]) -> dict[str, str]:
         with self.lock:
-            items = json.loads(self.path.read_text()) if self.path.exists() else []
+            items = self._load()
             if any(existing["mac"] == item["mac"] for existing in items):
                 raise AppError("To urządzenie jest już zapisane.", 409)
             item = {"id": uuid.uuid4().hex, **item}
@@ -351,7 +361,7 @@ class Devices:
 
     def remove(self, device_id: str) -> None:
         with self.lock:
-            items = json.loads(self.path.read_text()) if self.path.exists() else []
+            items = self._load()
             remaining = [item for item in items if item["id"] != device_id]
             if len(remaining) == len(items):
                 raise AppError("Nie znaleziono urządzenia.", 404)

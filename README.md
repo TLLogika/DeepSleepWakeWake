@@ -14,7 +14,7 @@ Otwórz `http://127.0.0.1:8000` w przeglądarce. Możesz ustawić ten adres jako
 
 ### Docker (Linux)
 
-Docker Compose uruchamia aplikację w sieci hosta, dzięki czemu skanowanie i pakiety Wake-on-LAN korzystają z lokalnej karty sieciowej. Obraz zawiera `arp-scan` z uprawnieniem `CAP_NET_RAW`, więc skan działa także przy ustawieniu kontenera na zwykłego użytkownika. Zapisane urządzenia pozostają w katalogu `data/` na hoście.
+Docker Compose uruchamia aplikację w sieci hosta, dzięki czemu skanowanie i pakiety Wake-on-LAN korzystają z lokalnej karty sieciowej. Obraz zawiera `arp-scan` z uprawnieniem `CAP_NET_RAW`. Przy starcie kontener nadaje użytkownikowi aplikacji dostęp do katalogu `data/`, a potem uruchamia ją bez uprawnień roota. Zapisane urządzenia pozostają w katalogu `data/` na hoście.
 
 ```bash
 mkdir -p data

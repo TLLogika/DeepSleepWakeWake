@@ -2,7 +2,9 @@ services:
   wakeboard:
     build: .
     network_mode: host
-    user: "${WAKEBOARD_UID:-1000}:${WAKEBOARD_GID:-1000}"
+    environment:
+      WAKEBOARD_UID: "${WAKEBOARD_UID:-1000}"
+      WAKEBOARD_GID: "${WAKEBOARD_GID:-1000}"
     cap_add:
       - NET_RAW
     volumes:
