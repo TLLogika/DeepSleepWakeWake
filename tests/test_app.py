@@ -3,12 +3,25 @@ import os
 import runpy
 import tempfile
 import unittest
+from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
 from subprocess import CompletedProcess
 from unittest.mock import patch
 
 import app
+
+
+class MemoryDevices(app.Devices):
+    def __init__(self):
+        super().__init__()
+        self.items = []
+
+    def _load(self):
+        return deepcopy(self.items)
+
+    def _write(self, items):
+        self.items = deepcopy(items)
 
 
 class WakeboardTests(unittest.TestCase):
@@ -39,6 +52,40 @@ class WakeboardTests(unittest.TestCase):
             self.assertEqual(app.add_device(value), value)
             select_network.assert_not_called()
             save.assert_called_once_with(value)
+
+    def test_edit_offline_device_preserves_identity_and_last_seen(self):
+        with self.subTest("offline edit"):
+            storage = MemoryDevices()
+            first = storage.add({"name": "PC", "ip": "", "mac": "A0:B1:C2:D3:E4:F5"})
+            storage.mark_seen([{"ip": "192.168.1.4", "mac": first["mac"]}], "2026-09-21T12:00:00+00:00")
+            edited = storage.update(first["id"], app.device_fields({
+                "name": "Komputer", "ip": "192.168.1.4", "mac": first["mac"],
+            }))
+            self.assertEqual(edited["id"], first["id"])
+            self.assertEqual(edited["name"], "Komputer")
+            self.assertEqual(edited["last_seen"], "2026-09-21T12:00:00+00:00")
+            self.assertEqual(storage.read(), [edited])
+
+    def test_edit_rejects_duplicate_mac_and_resets_history_for_new_mac(self):
+        with self.subTest("MAC change"):
+            storage = MemoryDevices()
+            first = storage.add({"name": "PC", "ip": "", "mac": "A0:B1:C2:D3:E4:F5"})
+            other = storage.add({"name": "Laptop", "ip": "", "mac": "A0:B1:C2:D3:E4:F6"})
+            storage.mark_seen([{"mac": first["mac"]}], "2026-09-21T12:00:00+00:00")
+            with self.assertRaises(app.AppError) as error:
+                storage.update(first["id"], {"name": "PC", "ip": "", "mac": other["mac"]})
+            self.assertEqual(error.exception.status, 409)
+            changed = storage.update(first["id"], {"name": "PC", "ip": "", "mac": "A0:B1:C2:D3:E4:F7"})
+            self.assertNotIn("last_seen", changed)
+            self.assertEqual(storage.read()[0], changed)
+
+    def test_scan_history_matches_mac_and_does_not_mark_unknown_ip(self):
+        with self.subTest("MAC matching"):
+            storage = MemoryDevices()
+            first = storage.add({"name": "PC", "ip": "192.168.1.4", "mac": "A0:B1:C2:D3:E4:F5"})
+            self.assertEqual(storage.mark_seen([{"ip": first["ip"]}], "2026-09-21T12:00:00+00:00"), [first])
+            seen = storage.mark_seen([{"ip": "192.168.1.9", "mac": first["mac"]}], "2026-09-21T12:01:00+00:00")
+            self.assertEqual(seen[0]["last_seen"], "2026-09-21T12:01:00+00:00")
 
     def test_state_keeps_saved_devices_when_network_is_unavailable(self):
         saved = [{"name": "Wyłączony PC", "ip": "", "mac": "A0:B1:C2:D3:E4:F5"}]

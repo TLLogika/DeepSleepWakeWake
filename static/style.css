@@ -74,7 +74,7 @@ h1 { font-size: 27px; line-height: 1.15; letter-spacing: -.8px; margin-bottom: 7
 .network-hint { padding-bottom: 10px; color: var(--faint); font-size: 11px; }
 
 .button { min-height: 38px; padding: 0 14px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid transparent; border-radius: 7px; font-size: 12px; font-weight: 700; white-space: nowrap; }
-.button:focus-visible, .inline-button:focus-visible, .wake-button:focus-visible, .table-button:focus-visible, .remove-button:focus-visible, .theme-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.button:focus-visible, .inline-button:focus-visible, .wake-button:focus-visible, .edit-button:focus-visible, .table-button:focus-visible, .remove-button:focus-visible, .theme-toggle:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .button-primary { background: var(--accent); color: var(--accent-text); }
 .button-primary:hover { background: var(--accent-hover); }
 .button-secondary { background: var(--surface-alt); color: var(--text); border-color: var(--border); }
@@ -93,8 +93,19 @@ h1 { font-size: 27px; line-height: 1.15; letter-spacing: -.8px; margin-bottom: 7
 .saved-actions { display: flex; align-items: center; gap: 8px; flex: none; }
 .wake-button { min-height: 33px; padding: 0 12px; border: 1px solid var(--accent); background: var(--surface-alt); color: var(--accent); border-radius: 6px; font-size: 11px; font-weight: 700; }
 .wake-button:hover { background: var(--border-soft); }
+.edit-button { min-height: 33px; padding: 0 10px; border: 1px solid var(--border); background: var(--surface-alt); color: var(--text); border-radius: 6px; font-size: 11px; font-weight: 700; }
+.edit-button:hover { border-color: var(--accent); }
 .remove-button { width: 33px; height: 33px; border: 1px solid var(--border); background: var(--surface-alt); color: var(--muted); border-radius: 6px; font-size: 19px; line-height: 1; }
 .remove-button:hover { color: var(--danger); border-color: var(--danger); }
+.scan-history summary { cursor: pointer; justify-content: space-between; border-bottom: 0; list-style: none; font-size: 13px; font-weight: 700; }
+.scan-history summary::-webkit-details-marker { display: none; }
+.scan-history summary::after { content: '⌄'; color: var(--muted); font-size: 18px; margin-left: auto; }
+.scan-history[open] summary::after { content: '⌃'; }
+.scan-history[open] summary { border-bottom: 1px solid var(--border-soft); }
+.status-row { padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; gap: 8px 20px; border-bottom: 1px solid var(--border-soft); font-size: 12px; }
+.status-row:last-child { border-bottom: 0; }
+.status-row strong { overflow-wrap: anywhere; }
+.status-row span { color: var(--muted); font-size: 11px; text-align: right; }
 .empty-state { padding: 24px 20px; color: var(--muted); font-size: 12px; }
 .inline-button { border: 0; background: none; padding: 0 3px; color: var(--accent); font-size: inherit; font-weight: 700; text-decoration: underline; }
 
@@ -143,8 +154,10 @@ dialog .mac-octets input { width: 0; min-width: 0; flex: 1 1 0; padding: 0 2px; 
   .network-controls .button { width: 100%; }
   .network-hint { padding-bottom: 0; }
   .network-indicator { max-width: 50vw; overflow: hidden; text-overflow: ellipsis; }
-  .saved-row, .panel-heading, th, td, .panel-note { padding-left: 14px; padding-right: 14px; }
+  .saved-row, .panel-heading, .status-row, th, td, .panel-note { padding-left: 14px; padding-right: 14px; }
   .saved-row { align-items: flex-start; }
+  .status-row { align-items: flex-start; flex-direction: column; }
+  .status-row span { text-align: left; }
   .saved-actions { padding-top: 2px; }
   .saved-meta { max-width: 43vw; }
   .table-scroll { overflow: visible; }
@@ -166,4 +179,5 @@ dialog .mac-octets input { width: 0; min-width: 0; flex: 1 1 0; padding: 0 2px; 
   .saved-row { gap: 8px; }
   .saved-actions { gap: 5px; }
   .wake-button { padding: 0 8px; }
+  .edit-button { padding: 0 7px; }
 }

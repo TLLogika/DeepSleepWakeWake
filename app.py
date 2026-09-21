@@ -14,6 +14,7 @@ import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
+from datetime import datetime, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -302,7 +303,7 @@ def wake(mac: str, network: Network) -> None:
         raise AppError(f"Nie udało się wysłać pakietu: {exc}", 503) from exc
 
 
-def add_device(value: dict[str, Any]) -> dict[str, str]:
+def device_fields(value: dict[str, Any]) -> dict[str, str]:
     ip = normalize_ip(str(value.get("ip", ""))) if value.get("ip") else ""
     if value.get("mac"):
         mac = normalize_mac(str(value["mac"]))
@@ -313,7 +314,11 @@ def add_device(value: dict[str, Any]) -> dict[str, str]:
     if not mac:
         raise AppError("Podaj adres MAC. Nie udało się go ustalić z podanego IP.")
     name = str(value.get("name", "")).strip()[:60] or ip or mac
-    return devices.add({"name": name, "ip": ip, "mac": mac})
+    return {"name": name, "ip": ip, "mac": mac}
+
+
+def add_device(value: dict[str, Any]) -> dict[str, str]:
+    return devices.add(device_fields(value))
 
 
 class Devices:
@@ -359,6 +364,34 @@ class Devices:
             items.append(item)
             self._write(items)
             return item
+
+    def update(self, device_id: str, fields: dict[str, str]) -> dict[str, str]:
+        with self.lock:
+            items = self._load()
+            current = next((item for item in items if item["id"] == device_id), None)
+            if current is None:
+                raise AppError("Nie znaleziono urządzenia.", 404)
+            if any(item["id"] != device_id and item["mac"] == fields["mac"] for item in items):
+                raise AppError("To urządzenie jest już zapisane.", 409)
+            updated = {**current, **fields}
+            if current["mac"] != fields["mac"]:
+                updated.pop("last_seen", None)
+            items[items.index(current)] = updated
+            self._write(items)
+            return updated
+
+    def mark_seen(self, found: list[dict[str, str]], scanned_at: str) -> list[dict[str, str]]:
+        macs = {item.get("mac") for item in found if item.get("mac")}
+        with self.lock:
+            items = self._load()
+            changed = False
+            for item in items:
+                if item["mac"] in macs and item.get("last_seen") != scanned_at:
+                    item["last_seen"] = scanned_at
+                    changed = True
+            if changed:
+                self._write(items)
+            return items
 
     def remove(self, device_id: str) -> None:
         with self.lock:
@@ -464,7 +497,10 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/scan":
                 value = self.read_json() if self.headers.get("Content-Length") else {}
                 network = network_from_request(value)
-                return self.send_json({"devices": scan(network), "network": network.public()})
+                found = scan(network)
+                scanned_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+                saved = devices.mark_seen(found, scanned_at)
+                return self.send_json({"devices": found, "network": network.public(), "saved_devices": saved, "scanned_at": scanned_at})
             if path == "/api/devices":
                 value = self.read_json()
                 item = add_device(value)
@@ -476,6 +512,18 @@ class Handler(BaseHTTPRequestHandler):
                 wake(mac, network)
                 return self.send_json({"ok": True})
             raise AppError("Nie znaleziono endpointu.", 404)
+
+        self.handle_api(action)
+
+    def do_PUT(self) -> None:
+        def action() -> None:
+            if not self.path.startswith("/api/devices/"):
+                raise AppError("Nie znaleziono endpointu.", 404)
+            device_id = self.path.removeprefix("/api/devices/")
+            if not re.fullmatch(r"[0-9a-f]{32}", device_id):
+                raise AppError("Nieprawidłowy identyfikator urządzenia.")
+            fields = device_fields(self.read_json())
+            self.send_json({"device": devices.update(device_id, fields)})
 
         self.handle_api(action)
 

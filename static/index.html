@@ -67,6 +67,11 @@
         </div>
         <p class="panel-note">Skan pokazuje urządzenia osiągalne z tego komputera. Sieć gościnna, izolacja Wi-Fi lub wyłączone urządzenie mogą ukryć sprzęt; wtedy dodaj go ręcznie.</p>
       </section>
+      <details class="panel scan-history" id="scan-history">
+        <summary class="panel-heading">Status zapisanych urządzeń po ostatnim skanie <span class="count" id="status-count">0</span></summary>
+        <div id="status-list"></div>
+        <p class="panel-note">Brak wykrycia nie oznacza, że urządzenie jest wyłączone. Skan obejmuje wybraną podsieć.</p>
+      </details>
     </main>
 
     <footer class="app-footer"><span id="version-info">Wersja…</span></footer>
@@ -74,7 +79,7 @@
     <dialog id="add-dialog" aria-labelledby="dialog-title">
       <form id="add-form" method="dialog">
         <div class="dialog-heading"><h2 id="dialog-title">Dodaj urządzenie</h2><button id="close-dialog" class="close-button" type="button" aria-label="Zamknij">×</button></div>
-        <p class="dialog-intro">Urządzenie może być wyłączone. Wpisz jego adres MAC, aby zapisać je do późniejszego wybudzenia.</p>
+        <p class="dialog-intro" id="dialog-intro">Urządzenie może być wyłączone. Wpisz jego adres MAC, aby zapisać je do późniejszego wybudzenia.</p>
         <label for="device-name">Nazwa <span>opcjonalnie</span></label>
         <input id="device-name" name="name" type="text" maxlength="60" placeholder="np. Komputer biurowy" autocomplete="off">
         <label for="device-ip">Adres IP <span>opcjonalnie</span></label>

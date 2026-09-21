@@ -1,5 +1,5 @@
 const $ = (selector) => document.querySelector(selector);
-const state = { saved: [], found: [], network: null, networkError: null, scanning: false, scanned: false };
+const state = { saved: [], found: [], network: null, networkError: null, scanning: false, scanned: false, editingId: null };
 const macOctets = [...document.querySelectorAll('.mac-octet')];
 let toastTimer;
 
@@ -112,6 +112,12 @@ function renderSaved() {
     wakeButton.type = 'button';
     wakeButton.textContent = 'Wybudź';
     wakeButton.addEventListener('click', () => wakeDevice(device, wakeButton));
+    const edit = document.createElement('button');
+    edit.className = 'edit-button';
+    edit.type = 'button';
+    edit.textContent = 'Edytuj';
+    edit.setAttribute('aria-label', `Edytuj ${device.name}`);
+    edit.addEventListener('click', () => openDialog(device, true));
     const remove = document.createElement('button');
     remove.className = 'remove-button';
     remove.type = 'button';
@@ -119,11 +125,47 @@ function renderSaved() {
     remove.setAttribute('aria-label', `Usuń ${device.name}`);
     remove.textContent = '×';
     remove.addEventListener('click', () => removeDevice(device));
-    actions.append(wakeButton, remove);
+    actions.append(wakeButton, edit, remove);
     row.append(identity, actions);
     list.append(row);
   }
   renderFound();
+  renderStatus();
+}
+
+function formatDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'nieznana data';
+  return new Intl.DateTimeFormat('pl-PL', {
+    timeZone: 'Europe/Warsaw', day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  }).format(date);
+}
+
+function renderStatus() {
+  const list = $('#status-list');
+  list.replaceChildren();
+  $('#status-count').textContent = state.saved.length;
+  if (!state.saved.length) {
+    const empty = document.createElement('p');
+    empty.className = 'empty-state';
+    empty.textContent = 'Brak zapisanych urządzeń.';
+    list.append(empty);
+    return;
+  }
+  const seenMacs = new Set(state.found.map((device) => device.mac).filter(Boolean));
+  for (const device of state.saved) {
+    const row = document.createElement('div');
+    row.className = 'status-row';
+    const name = document.createElement('strong');
+    name.textContent = device.name;
+    const info = document.createElement('span');
+    const status = !state.scanned ? 'Brak ostatniego skanu'
+      : seenMacs.has(device.mac) ? 'Widziane przy ostatnim skanie' : 'Nie wykryto przy ostatnim skanie';
+    info.textContent = `${status} · Ostatnio widziane: ${device.last_seen ? formatDate(device.last_seen) : 'nigdy'}`;
+    row.append(name, info);
+    list.append(row);
+  }
 }
 
 function renderFound() {
@@ -190,6 +232,8 @@ async function scanNetwork(silent = false) {
   if (state.scanning) return;
   const choice = networkChoice();
   saveNetworkChoice();
+  const previousFound = state.found;
+  const previousScanned = state.scanned;
   state.scanning = true;
   state.found = [];
   renderFound();
@@ -203,11 +247,15 @@ async function scanNetwork(silent = false) {
   try {
     const result = await api('/api/scan', { method: 'POST', body: JSON.stringify(choice) });
     state.found = result.devices;
+    state.saved = result.saved_devices;
     state.scanned = true;
     state.network = result.network;
     renderNetwork();
+    renderSaved();
     if (!silent) toast(`Skanowanie zakończone. Znaleziono ${state.found.length} urządzeń.`);
   } catch (error) {
+    state.found = previousFound;
+    state.scanned = previousScanned;
     toast(error.message, true);
   } finally {
     state.scanning = false;
@@ -221,11 +269,17 @@ async function scanNetwork(silent = false) {
   }
 }
 
-function openDialog(device = null) {
+function openDialog(device = null, editing = false) {
+  state.editingId = editing ? device.id : null;
+  $('#dialog-title').textContent = editing ? 'Edytuj urządzenie' : 'Dodaj urządzenie';
+  $('#dialog-intro').textContent = editing
+    ? 'Zmień nazwę, adres IP lub adres MAC zapisanego urządzenia.'
+    : 'Urządzenie może być wyłączone. Wpisz jego adres MAC, aby zapisać je do późniejszego wybudzenia.';
+  $('#save-device').textContent = editing ? 'Zapisz zmiany' : 'Zapisz';
   $('#add-form').reset();
   macOctets.forEach((input) => { input.value = ''; });
   if (device) {
-    $('#device-name').value = device.hostname || '';
+    $('#device-name').value = device.name || device.hostname || '';
     $('#device-ip').value = device.ip || '';
     const parts = (device.mac || '').split(':');
     macOctets.forEach((input, index) => { input.value = parts[index] || ''; });
@@ -237,10 +291,7 @@ function openDialog(device = null) {
 async function loadVersion() {
   try {
     const release = await api('/api/version');
-    const date = new Intl.DateTimeFormat('pl-PL', {
-      timeZone: 'Europe/Warsaw', day: '2-digit', month: '2-digit', year: 'numeric',
-      hour: '2-digit', minute: '2-digit',
-    }).format(new Date(release.released_at));
+    const date = formatDate(release.released_at);
     $('#version-info').textContent = `Wersja ${release.name} · ${date}`;
   } catch {
     $('#version-info').textContent = 'Wersja niedostępna';
@@ -258,8 +309,9 @@ async function addDevice(event) {
   const save = $('#save-device');
   save.disabled = true;
   try {
-    const result = await api('/api/devices', {
-      method: 'POST',
+    const editingId = state.editingId;
+    const result = await api(editingId ? `/api/devices/${editingId}` : '/api/devices', {
+      method: editingId ? 'PUT' : 'POST',
       body: JSON.stringify({
         name: $('#device-name').value,
         ip: $('#device-ip').value,
@@ -267,10 +319,14 @@ async function addDevice(event) {
         ...networkChoice(),
       }),
     });
-    state.saved.push(result.device);
+    if (editingId) {
+      state.saved = state.saved.map((item) => item.id === editingId ? result.device : item);
+    } else {
+      state.saved.push(result.device);
+    }
     renderSaved();
     $('#add-dialog').close();
-    toast('Urządzenie zostało zapisane.');
+    toast(editingId ? 'Zmiany zostały zapisane.' : 'Urządzenie zostało zapisane.');
   } catch (error) {
     toast(error.message, true);
   } finally {
