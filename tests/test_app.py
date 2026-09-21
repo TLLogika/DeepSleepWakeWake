@@ -18,6 +18,24 @@ class WakeboardTests(unittest.TestCase):
         with self.assertRaises(app.AppError):
             app.normalize_mac("A1:B2:C3:D4:E5:F6")
 
+    def test_add_offline_device_with_mac_does_not_query_network(self):
+        value = {"name": "Wyłączony PC", "ip": "192.168.1.44", "mac": "A0:B1:C2:D3:E4:F5"}
+        with patch.object(app, "network_from_request") as select_network, patch.object(
+            app.devices, "add", side_effect=lambda item: item
+        ) as save:
+            self.assertEqual(app.add_device(value), value)
+            select_network.assert_not_called()
+            save.assert_called_once_with(value)
+
+    def test_state_keeps_saved_devices_when_network_is_unavailable(self):
+        saved = [{"name": "Wyłączony PC", "ip": "", "mac": "A0:B1:C2:D3:E4:F5"}]
+        with patch.object(app, "available_networks", side_effect=app.AppError("Brak sieci")), patch.object(
+            app.devices, "read", return_value=saved
+        ):
+            self.assertEqual(app.state_payload(), {
+                "network": None, "networks": [], "network_error": "Brak sieci", "devices": saved,
+            })
+
     def test_large_network_scan_stays_within_local_24(self):
         routes = [{"dev": "eth0"}]
         addresses = [{

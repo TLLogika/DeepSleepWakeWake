@@ -1,5 +1,6 @@
 const $ = (selector) => document.querySelector(selector);
-const state = { saved: [], found: [], network: null, scanning: false, scanned: false };
+const state = { saved: [], found: [], network: null, networkError: null, scanning: false, scanned: false };
+const macOctets = [...document.querySelectorAll('.mac-octet')];
 let toastTimer;
 
 function setTheme(theme) {
@@ -48,7 +49,11 @@ async function api(path, options = {}) {
 }
 
 function renderNetwork() {
-  if (!state.network) return;
+  if (!state.network) {
+    $('#network-status').textContent = 'Brak sieci';
+    $('#network-description').textContent = 'Możesz zapisać urządzenie ręcznie, podając jego adres MAC.';
+    return;
+  }
   $('#network-status').textContent = state.network.scan_range;
   $('#network-description').textContent = `Interfejs ${state.network.interface} · adres ${state.network.address}`;
 }
@@ -132,7 +137,7 @@ function renderFound() {
     cell.className = 'table-empty';
     cell.textContent = state.scanning
       ? 'Skanowanie trwa. To może potrwać kilka sekund…'
-      : 'Nie znaleziono urządzeń. Spróbuj skanować lub dodaj adres MAC ręcznie.';
+      : (state.networkError || 'Nie znaleziono urządzeń. Spróbuj skanować lub dodaj adres MAC ręcznie.');
     row.append(cell);
     body.append(row);
     return;
@@ -162,10 +167,17 @@ async function load() {
     const result = await api('/api/state');
     state.saved = result.devices;
     state.network = result.network;
+    state.networkError = result.network_error;
     showNetworkChoices(result.networks || [result.network]);
     renderNetwork();
     renderSaved();
-    scanNetwork(true);
+    if (state.network) {
+      scanNetwork(true);
+    } else {
+      $('#scan-button').disabled = true;
+      $('#empty-scan').disabled = true;
+      $('#reset-network').disabled = true;
+    }
   } catch (error) {
     $('#network-status').textContent = 'Brak sieci';
     $('#network-description').textContent = 'Sprawdź połączenie sieciowe i serwer.';
@@ -211,10 +223,12 @@ async function scanNetwork(silent = false) {
 
 function openDialog(device = null) {
   $('#add-form').reset();
+  macOctets.forEach((input) => { input.value = ''; });
   if (device) {
     $('#device-name').value = device.hostname || '';
     $('#device-ip').value = device.ip || '';
-    $('#device-mac').value = device.mac || '';
+    const parts = (device.mac || '').split(':');
+    macOctets.forEach((input, index) => { input.value = parts[index] || ''; });
   }
   $('#add-dialog').showModal();
   $('#device-name').focus();
@@ -222,6 +236,12 @@ function openDialog(device = null) {
 
 async function addDevice(event) {
   event.preventDefault();
+  const octets = macOctets.map((input) => input.value);
+  if (octets.some(Boolean) && !octets.every((value) => /^[0-9A-F]{2}$/.test(value))) {
+    toast('Wpisz po dwa znaki 0–9 lub A–F w każdej z sześciu par MAC.', true);
+    macOctets.find((input) => !/^[0-9A-F]{2}$/.test(input.value))?.focus();
+    return;
+  }
   const save = $('#save-device');
   save.disabled = true;
   try {
@@ -230,7 +250,7 @@ async function addDevice(event) {
       body: JSON.stringify({
         name: $('#device-name').value,
         ip: $('#device-ip').value,
-        mac: $('#device-mac').value,
+        mac: octets.every(Boolean) ? octets.join(':') : '',
         ...networkChoice(),
       }),
     });
@@ -244,6 +264,30 @@ async function addDevice(event) {
     save.disabled = false;
   }
 }
+
+macOctets.forEach((input, index) => {
+  input.addEventListener('input', () => {
+    input.value = input.value.replace(/[^0-9a-f]/gi, '').slice(0, 2).toUpperCase();
+    if (input.value.length === 2) macOctets[index + 1]?.focus();
+  });
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Backspace' && !input.value && index > 0) {
+      macOctets[index - 1].focus();
+      macOctets[index - 1].select();
+    }
+    if ((event.key === ':' || event.key === '-') && input.value.length === 2) {
+      event.preventDefault();
+      macOctets[index + 1]?.focus();
+    }
+  });
+  input.addEventListener('paste', (event) => {
+    const pasted = event.clipboardData.getData('text').replace(/[^0-9a-f]/gi, '').toUpperCase();
+    if (pasted.length !== 12) return;
+    event.preventDefault();
+    macOctets.forEach((field, part) => { field.value = pasted.slice(part * 2, part * 2 + 2); });
+    macOctets[5].focus();
+  });
+});
 
 async function removeDevice(device) {
   if (!confirm(`Usunąć „${device.name}” z zapisanych urządzeń?`)) return;

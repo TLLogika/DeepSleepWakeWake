@@ -39,7 +39,7 @@ Jeśli chcesz otwierać panel z innych urządzeń w tej samej sieci, uruchom `py
 
 - **Skanuj sieć** używa `arp-scan` do wykrywania urządzeń odpowiadających na ARP, także gdy blokują ping. Jeśli `arp-scan` nie jest zainstalowany, używa `ping` i tablicy sąsiadów systemu. Próbuje pobrać nazwy urządzeń przez reverse DNS lub mDNS. Adresy MAC nie są wyświetlane w wynikach skanowania. Dla dużych podsieci skanuje bieżący zakres `/24`.
 - **Podsieć do skanowania** pozwala wybrać interfejs i wpisać własny zakres IPv4 w formacie CIDR, np. `192.168.0.0/25`. Zakres musi należeć do sieci podłączonej do wybranego interfejsu i może obejmować najwyżej 256 adresów (`/24`). Puste pole przywraca automatyczny zakres. Wybrany interfejs jest używany także do wysłania Wake-on-LAN.
-- **Dodaj ręcznie** zapisuje nazwę, opcjonalny IPv4 i adres MAC. Gdy podasz tylko IP urządzenia, które jest aktualnie online, panel spróbuje sam odczytać MAC.
+- **Dodaj ręcznie** zapisuje nazwę, opcjonalny IPv4 i adres MAC wpisany w sześciu polach po dwa znaki. Urządzenie może być wyłączone. Gdy podasz tylko IP urządzenia, które jest aktualnie online, panel spróbuje sam odczytać MAC.
 - **Wybudź** wysyła pakiet magiczny UDP na port 9 pod adres rozgłoszeniowy lokalnej sieci.
 
 Wake-on-LAN musi być włączone na urządzeniu docelowym w BIOS/UEFI oraz w ustawieniach karty sieciowej. Skan wykrywa urządzenia osiągalne z komputera z serwerem; sieć gościnna, izolacja klientów Wi-Fi i wyłączony sprzęt mogą ukryć inne urządzenia. Nie każde urządzenie udostępnia nazwę hosta, dlatego ręczne dodawanie MAC jest przydatne. Zapisane urządzenia znajdują się w `data/devices.json`; ten katalog oraz `.env` są ignorowane przez Git.

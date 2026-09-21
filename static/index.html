@@ -72,13 +72,26 @@
     <dialog id="add-dialog" aria-labelledby="dialog-title">
       <form id="add-form" method="dialog">
         <div class="dialog-heading"><h2 id="dialog-title">Dodaj urządzenie</h2><button id="close-dialog" class="close-button" type="button" aria-label="Zamknij">×</button></div>
-        <p class="dialog-intro">Do wybudzenia potrzebny jest adres MAC. Możesz podać samo IP, jeśli serwer potrafi odczytać z niego MAC.</p>
+        <p class="dialog-intro">Urządzenie może być wyłączone. Wpisz jego adres MAC, aby zapisać je do późniejszego wybudzenia.</p>
         <label for="device-name">Nazwa <span>opcjonalnie</span></label>
         <input id="device-name" name="name" type="text" maxlength="60" placeholder="np. Komputer biurowy" autocomplete="off">
         <label for="device-ip">Adres IP <span>opcjonalnie</span></label>
         <input id="device-ip" name="ip" type="text" inputmode="decimal" placeholder="np. 192.168.0.70" autocomplete="off">
-        <label for="device-mac">Adres MAC</label>
-        <input id="device-mac" name="mac" type="text" autocomplete="off">
+        <label for="device-mac-0">Adres MAC</label>
+        <div class="mac-octets" role="group" aria-label="Adres MAC, sześć par znaków szesnastkowych">
+          <input id="device-mac-0" class="mac-octet" type="text" maxlength="2" inputmode="text" autocomplete="off" spellcheck="false" aria-label="Pierwsza para adresu MAC" placeholder="00">
+          <span aria-hidden="true">:</span>
+          <input class="mac-octet" type="text" maxlength="2" inputmode="text" autocomplete="off" spellcheck="false" aria-label="Druga para adresu MAC" placeholder="00">
+          <span aria-hidden="true">:</span>
+          <input class="mac-octet" type="text" maxlength="2" inputmode="text" autocomplete="off" spellcheck="false" aria-label="Trzecia para adresu MAC" placeholder="00">
+          <span aria-hidden="true">:</span>
+          <input class="mac-octet" type="text" maxlength="2" inputmode="text" autocomplete="off" spellcheck="false" aria-label="Czwarta para adresu MAC" placeholder="00">
+          <span aria-hidden="true">:</span>
+          <input class="mac-octet" type="text" maxlength="2" inputmode="text" autocomplete="off" spellcheck="false" aria-label="Piąta para adresu MAC" placeholder="00">
+          <span aria-hidden="true">:</span>
+          <input class="mac-octet" type="text" maxlength="2" inputmode="text" autocomplete="off" spellcheck="false" aria-label="Szósta para adresu MAC" placeholder="00">
+        </div>
+        <p class="mac-hint">W każdym polu wpisz dwa znaki 0–9 lub A–F. Możesz też wkleić cały adres MAC.</p>
         <div class="dialog-actions"><button class="button button-secondary" id="cancel-dialog" type="button">Anuluj</button><button class="button button-primary" id="save-device" type="submit">Zapisz</button></div>
       </form>
     </dialog>

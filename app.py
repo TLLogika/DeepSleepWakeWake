@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import ipaddress
 import json
+import os
 import re
 import shutil
 import socket
@@ -32,6 +33,8 @@ class AppError(Exception):
 
 def run_ip(*args: str) -> Any:
     if not shutil.which("ip"):
+        if os.name == "nt":
+            raise AppError("Skanowanie sieci jest dostępne w systemie Linux.", 503)
         raise AppError("Brakuje polecenia ip. Zainstaluj pakiet iproute2.", 503)
     result = subprocess.run(
         ["ip", "-j", *args], capture_output=True, text=True, timeout=5, check=False
@@ -298,6 +301,20 @@ def wake(mac: str, network: Network) -> None:
         raise AppError(f"Nie udało się wysłać pakietu: {exc}", 503) from exc
 
 
+def add_device(value: dict[str, Any]) -> dict[str, str]:
+    ip = normalize_ip(str(value.get("ip", ""))) if value.get("ip") else ""
+    if value.get("mac"):
+        mac = normalize_mac(str(value["mac"]))
+    elif ip:
+        mac = resolve_mac(ip, network_from_request(value))
+    else:
+        mac = None
+    if not mac:
+        raise AppError("Podaj adres MAC. Nie udało się go ustalić z podanego IP.")
+    name = str(value.get("name", "")).strip()[:60] or ip or mac
+    return devices.add({"name": name, "ip": ip, "mac": mac})
+
+
 class Devices:
     def __init__(self, path: Path = DATA_FILE):
         self.path = path
@@ -342,6 +359,21 @@ class Devices:
 
 
 devices = Devices()
+
+
+def state_payload() -> dict[str, Any]:
+    try:
+        networks = available_networks()
+        network_error = None
+    except (AppError, OSError, subprocess.TimeoutExpired) as exc:
+        networks = []
+        network_error = str(exc) if isinstance(exc, AppError) else "Sieć jest niedostępna."
+    return {
+        "network": networks[0].public() if networks else None,
+        "networks": [item.public() for item in networks],
+        "network_error": network_error,
+        "devices": devices.read(),
+    }
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -397,14 +429,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/favicon.svg":
             return self.send_asset("favicon.svg", "image/svg+xml")
         if path == "/api/state":
-            def state() -> None:
-                networks = available_networks()
-                self.send_json({
-                    "network": networks[0].public(),
-                    "networks": [item.public() for item in networks],
-                    "devices": devices.read(),
-                })
-            return self.handle_api(state)
+            return self.handle_api(lambda: self.send_json(state_payload()))
         self.send_error(404)
 
     def do_POST(self) -> None:
@@ -417,17 +442,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json({"devices": scan(network), "network": network.public()})
             if path == "/api/devices":
                 value = self.read_json()
-                network = network_from_request(value)
-                ip = normalize_ip(str(value.get("ip", ""))) if value.get("ip") else ""
-                mac = (
-                    normalize_mac(str(value["mac"]))
-                    if value.get("mac")
-                    else resolve_mac(ip, network) if ip else None
-                )
-                if not mac:
-                    raise AppError("Podaj adres MAC. Nie udało się go ustalić z podanego IP.")
-                name = str(value.get("name", "")).strip()[:60] or ip or mac
-                item = devices.add({"name": name, "ip": ip, "mac": mac})
+                item = add_device(value)
                 return self.send_json({"device": item}, 201)
             if path == "/api/wake":
                 value = self.read_json()
