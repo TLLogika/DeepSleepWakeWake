@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#111714">
+    <title>Logowanie — Wakeboard</title>
+    <link rel="stylesheet" href="/login.css">
+    <script src="/login.js" defer></script>
+  </head>
+  <body>
+    <main class="login-card">
+      <div class="brand"><span class="brand-mark">↻</span>Wakeboard</div>
+      <h1 id="title">Konto admin</h1>
+      <p id="intro">Sprawdzanie konta…</p>
+
+      <form id="setup-form" hidden>
+        <label for="setup-code">Jednorazowy kod konfiguracji</label>
+        <input id="setup-code" name="code" type="text" required autocomplete="off" spellcheck="false">
+        <p class="hint">Kod znajdziesz w terminalu serwera albo w <code>docker compose logs wakeboard</code>.</p>
+        <label for="setup-password">Nowe hasło konta admin</label>
+        <input id="setup-password" name="password" type="password" required minlength="12" maxlength="128" autocomplete="new-password">
+        <label for="setup-confirm">Powtórz hasło</label>
+        <input id="setup-confirm" name="confirm" type="password" required minlength="12" maxlength="128" autocomplete="new-password">
+        <button type="submit">Ustaw hasło i zaloguj</button>
+      </form>
+
+      <form id="login-form" hidden>
+        <label for="username">Użytkownik</label>
+        <input id="username" name="username" type="text" value="admin" readonly autocomplete="username">
+        <label for="password">Hasło</label>
+        <input id="password" name="password" type="password" required autocomplete="current-password">
+        <button type="submit">Zaloguj</button>
+      </form>
+
+      <p id="message" role="alert" hidden></p>
+    </main>
+  </body>
+</html>

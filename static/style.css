@@ -56,6 +56,8 @@ button:disabled { cursor: wait; opacity: .65; }
 .status-dot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--positive); }
 .theme-toggle { width: 31px; height: 31px; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-alt); color: var(--text); font-size: 17px; line-height: 1; }
 .theme-toggle:hover { border-color: var(--accent); }
+.logout-button { min-height: 31px; padding: 0 9px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-alt); color: var(--text); font-size: 11px; font-weight: 700; }
+.logout-button:hover { border-color: var(--accent); }
 
 .container { max-width: 1112px; margin: 0 auto; padding: 34px 24px 70px; }
 .app-footer { max-width: 1112px; margin: 0 auto; padding: 0 24px 24px; color: var(--faint); font-size: 11px; text-align: right; }

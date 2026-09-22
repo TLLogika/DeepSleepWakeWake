@@ -10,6 +10,7 @@ RUN apt-get update \
 
 WORKDIR /app
 COPY app.py ./
+COPY auth.py ./
 COPY version.json ./
 COPY static/ ./static/
 COPY docker-entrypoint.sh /usr/local/bin/wakeboard-entrypoint

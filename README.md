@@ -23,7 +23,15 @@ WAKEBOARD_UID=$(id -u) WAKEBOARD_GID=$(id -g) docker compose up -d --build
 
 Jeśli pojawi się błąd dostępu do `/var/run/docker.sock`, użyj `sudo WAKEBOARD_UID=$(id -u) WAKEBOARD_GID=$(id -g) docker compose up -d --build` (oraz `sudo docker compose down` przy zatrzymywaniu).
 
-Kontener nasłuchuje na `0.0.0.0:9000`. Panel otworzysz na tym komputerze pod `http://127.0.0.1:9000`, a z innego urządzenia w LAN pod `http://ADRES_IP_KOMPUTERA:9000`. Panel jest dostępny dla innych użytkowników tej sieci, więc uruchamiaj go w zaufanej sieci. Do zatrzymania kontenera użyj `docker compose down`. Zmienne `WAKEBOARD_UID` i `WAKEBOARD_GID` pozwalają kontenerowi odczytać i zapisać `data/devices.json` z uprawnieniami bieżącego użytkownika.
+Kontener nasłuchuje na `0.0.0.0:9000`. Panel otworzysz na tym komputerze pod `http://127.0.0.1:9000`, a z innego urządzenia w LAN pod `http://ADRES_IP_KOMPUTERA:9000`. Port jest widoczny w tej sieci, ale panel wymaga zalogowania. Do zatrzymania kontenera użyj `docker compose down`. Zmienne `WAKEBOARD_UID` i `WAKEBOARD_GID` pozwalają kontenerowi odczytać i zapisać katalog `data/` z uprawnieniami bieżącego użytkownika.
+
+### Logowanie admina
+
+Przy pierwszym uruchomieniu otwórz panel i ustaw hasło konta `admin` (co najmniej 12 znaków). Formularz poprosi też o jednorazowy kod konfiguracji. Kod jest wypisywany w terminalu uruchamiającym `app.py` albo w `docker compose logs wakeboard`. Dzięki temu osoba, która tylko trafi na adres panelu, nie może jako pierwsza ustawić hasła. Po konfiguracji kod przestaje działać; kolejnych kont ani zmiany hasła przez stronę nie ma.
+
+Hasło jest zapisywane tylko jako skrót `scrypt` z losową solą w `data/auth.json`; ten katalog jest ignorowany przez Git i zachowuje zawartość przy aktualizacji kontenera. Plik ma uprawnienia `0600` na Linuksie. Sesja wygasa po 12 godzinach albo po wylogowaniu. Po restarcie serwera trzeba zalogować się ponownie tym samym hasłem. Jeśli właściciel serwera zapomni hasła, może ręcznie usunąć `data/auth.json` i ponownie uruchomić serwer, aby przejść konfigurację od początku.
+
+Połączenie przez zwykłe HTTP nie szyfruje hasła przesyłanego z przeglądarki. Przy dostępie z innych urządzeń użyj HTTPS, np. przez Tailscale Serve lub lokalny reverse proxy. Przy żądaniu z HTTPS ciasteczko sesji automatycznie dostaje atrybut `Secure`; można to też wymusić przez `WAKEBOARD_SECURE_COOKIE=1` w środowisku Compose. Nie ustawiaj tej zmiennej przy bezpośrednim HTTP, bo przeglądarka nie wyśle wtedy sesji.
 
 ### Wersja
 
@@ -37,7 +45,7 @@ bash scripts/install-autostart.sh
 
 Potem ustaw `http://127.0.0.1:8000` jako stronę startową przeglądarki. Usługę można zatrzymać poleceniem `systemctl --user stop wakeboard.service`.
 
-Jeśli chcesz otwierać panel z innych urządzeń w tej samej sieci, uruchom `python3 app.py --host 0.0.0.0`, a następnie użyj adresu IP komputera serwera i portu `8000`. Taki panel będzie dostępny dla innych użytkowników sieci, więc uruchamiaj go tylko w zaufanej sieci.
+Jeśli chcesz otwierać panel z innych urządzeń w tej samej sieci, uruchom `python3 app.py --host 0.0.0.0`, a następnie użyj adresu IP komputera serwera i portu `8000`. Port będzie widoczny w sieci, a dostęp do panelu wymaga logowania.
 
 ## Jak działa
 

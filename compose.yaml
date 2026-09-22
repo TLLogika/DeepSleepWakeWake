@@ -5,6 +5,7 @@ services:
     environment:
       WAKEBOARD_UID: "${WAKEBOARD_UID:-1000}"
       WAKEBOARD_GID: "${WAKEBOARD_GID:-1000}"
+      WAKEBOARD_SECURE_COOKIE: "${WAKEBOARD_SECURE_COOKIE:-0}"
     cap_add:
       - NET_RAW
     volumes:

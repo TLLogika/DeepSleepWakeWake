@@ -38,12 +38,18 @@ async function api(path, options = {}) {
   try {
     response = await fetch(path, {
       ...options,
-      headers: options.body ? { 'Content-Type': 'application/json' } : {},
+      headers: options.method && options.method !== 'GET'
+        ? { 'X-Wakeboard-Request': '1', ...(options.body ? { 'Content-Type': 'application/json' } : {}) }
+        : {},
     });
   } catch {
     throw new Error('Brak połączenia z lokalnym serwerem.');
   }
   const result = await response.json();
+  if (response.status === 401) {
+    location.replace('/');
+    throw new Error('Sesja wygasła. Zaloguj się ponownie.');
+  }
   if (!response.ok) {
     const error = new Error(result.error || 'Nie udało się wykonać operacji.');
     error.status = response.status;
@@ -425,5 +431,13 @@ $('#add-button').addEventListener('click', () => openDialog());
 $('#close-dialog').addEventListener('click', () => $('#add-dialog').close());
 $('#cancel-dialog').addEventListener('click', () => $('#add-dialog').close());
 $('#add-form').addEventListener('submit', addDevice);
+$('#logout-button').addEventListener('click', async () => {
+  try {
+    await api('/api/auth/logout', { method: 'POST' });
+    location.replace('/');
+  } catch (error) {
+    toast(error.message, true);
+  }
+});
 load();
 loadVersion();

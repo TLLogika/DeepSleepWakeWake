@@ -1,0 +1,19 @@
+:root { color-scheme: dark; font-family: system-ui, sans-serif; background: #111714; color: #edf4ec; }
+* { box-sizing: border-box; }
+body { min-height: 100vh; margin: 0; display: grid; place-items: center; padding: 20px; }
+.login-card { width: min(100%, 410px); padding: 30px; border: 1px solid #334137; border-radius: 12px; background: #1c2520; box-shadow: 0 20px 60px #080d0a80; }
+.brand { display: flex; align-items: center; gap: 9px; font-size: 17px; font-weight: 750; }
+.brand-mark { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 7px; background: #b7e880; color: #213b24; font-size: 22px; }
+h1 { margin: 25px 0 7px; font-size: 23px; }
+p { margin: 0 0 20px; color: #a9b9ab; font-size: 13px; line-height: 1.5; }
+form { display: grid; }
+label { margin: 13px 0 6px; font-size: 12px; font-weight: 650; }
+input { width: 100%; height: 40px; padding: 0 11px; border: 1px solid #46564a; border-radius: 7px; background: #131b16; color: #edf4ec; font: inherit; }
+input:focus-visible, button:focus-visible { outline: 2px solid #b7e880; outline-offset: 2px; }
+input[readonly] { color: #a9b9ab; }
+.hint { margin: 7px 0 0; font-size: 11px; }
+code { overflow-wrap: anywhere; }
+button { min-height: 41px; margin-top: 23px; border: 0; border-radius: 7px; background: #b7e880; color: #213b24; font: inherit; font-size: 13px; font-weight: 750; cursor: pointer; }
+button:disabled { opacity: .65; cursor: wait; }
+#message { margin: 17px 0 0; color: #ffaba7; }
+[hidden] { display: none !important; }

@@ -16,15 +16,20 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from http import HTTPStatus
+from http.cookies import CookieError, SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+
+from auth import AuthError, Authentication, SESSION_SECONDS
 
 
 ROOT = Path(__file__).resolve().parent
 DATA_FILE = ROOT / "data" / "devices.json"
 VERSION_FILE = ROOT / "version.json"
+AUTH_FILE = ROOT / "data" / "auth.json"
 MAC_RE = re.compile(r"^[0-9a-fA-F]{12}$")
+auth = Authentication(AUTH_FILE)
 
 
 class AppError(Exception):
@@ -433,11 +438,19 @@ def release_info() -> dict[str, str]:
 
 
 class Handler(BaseHTTPRequestHandler):
-    def send_json(self, value: Any, status: int = 200) -> None:
+    def security_headers(self) -> None:
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Content-Security-Policy", "default-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
+
+    def send_json(self, value: Any, status: int = 200, cookie: str | None = None) -> None:
         body = json.dumps(value, ensure_ascii=False).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Cache-Control", "no-store")
+        self.security_headers()
+        if cookie is not None:
+            self.send_header("Set-Cookie", cookie)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -447,10 +460,42 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("X-Content-Type-Options", "nosniff")
+        self.security_headers()
         self.end_headers()
         self.wfile.write(body)
+
+    def session_token(self) -> str:
+        try:
+            cookies = SimpleCookie()
+            cookies.load(self.headers.get("Cookie", ""))
+            item = cookies.get("wakeboard_session")
+            return item.value if item else ""
+        except CookieError:
+            return ""
+
+    def authenticated(self) -> bool:
+        return auth.valid(self.session_token())
+
+    def require_login(self) -> bool:
+        if self.authenticated():
+            return True
+        self.send_json({"error": "Zaloguj się na konto admin."}, 401)
+        return False
+
+    def require_same_origin(self) -> bool:
+        host = self.headers.get("Host", "")
+        origin = self.headers.get("Origin", "")
+        if (not host or origin not in (f"http://{host}", f"https://{host}")
+                or self.headers.get("X-Wakeboard-Request") != "1"):
+            self.send_json({"error": "Żądanie zostało odrzucone."}, 403)
+            return False
+        return True
+
+    def session_cookie(self, token: str, clear: bool = False) -> str:
+        cookie = f"wakeboard_session={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age={0 if clear else SESSION_SECONDS}"
+        if self.headers.get("Origin", "").startswith("https://") or os.environ.get("WAKEBOARD_SECURE_COOKIE") == "1":
+            cookie += "; Secure"
+        return cookie
 
     def read_json(self) -> dict[str, Any]:
         try:
@@ -470,15 +515,23 @@ class Handler(BaseHTTPRequestHandler):
     def handle_api(self, action) -> None:
         try:
             action()
-        except AppError as exc:
+        except (AppError, AuthError) as exc:
             self.send_json({"error": str(exc)}, exc.status)
         except (OSError, subprocess.TimeoutExpired):
             self.send_json({"error": "Nie udało się wykonać operacji sieciowej."}, 503)
 
     def do_GET(self) -> None:
         path = self.path.split("?", 1)[0]
+        if path == "/api/auth/status":
+            return self.send_json({"configured": auth.configured(), "authenticated": self.authenticated()})
         if path == "/":
-            return self.send_asset("index.html", "text/html; charset=utf-8")
+            return self.send_asset("index.html" if self.authenticated() else "login.html", "text/html; charset=utf-8")
+        if path == "/login.js":
+            return self.send_asset("login.js", "text/javascript; charset=utf-8")
+        if path == "/login.css":
+            return self.send_asset("login.css", "text/css; charset=utf-8")
+        if not self.require_login():
+            return
         if path == "/style.css":
             return self.send_asset("style.css", "text/css; charset=utf-8")
         if path == "/app.js":
@@ -489,10 +542,35 @@ class Handler(BaseHTTPRequestHandler):
             return self.handle_api(lambda: self.send_json(release_info()))
         if path == "/api/state":
             return self.handle_api(lambda: self.send_json(state_payload()))
-        self.send_error(404)
+        self.send_json({"error": "Nie znaleziono endpointu."}, 404)
 
     def do_POST(self) -> None:
         path = self.path.split("?", 1)[0]
+
+        if path in ("/api/auth/setup", "/api/auth/login"):
+            if not self.require_same_origin():
+                return
+
+            def login_action() -> None:
+                value = self.read_json()
+                if path == "/api/auth/setup":
+                    if not isinstance(value.get("code"), str) or not isinstance(value.get("password"), str):
+                        raise AppError("Podaj kod konfiguracji i hasło.")
+                    token = auth.setup(value["code"], value["password"], self.client_address[0])
+                else:
+                    if not isinstance(value.get("username"), str) or not isinstance(value.get("password"), str):
+                        raise AppError("Podaj nazwę użytkownika i hasło.")
+                    token = auth.login(value["username"], value["password"], self.client_address[0])
+                self.send_json({"ok": True}, cookie=self.session_cookie(token))
+
+            return self.handle_api(login_action)
+
+        if not self.require_login() or not self.require_same_origin():
+            return
+
+        if path == "/api/auth/logout":
+            auth.logout(self.session_token())
+            return self.send_json({"ok": True}, cookie=self.session_cookie("", clear=True))
 
         def action() -> None:
             if path == "/api/scan":
@@ -517,6 +595,9 @@ class Handler(BaseHTTPRequestHandler):
         self.handle_api(action)
 
     def do_PUT(self) -> None:
+        if not self.require_login() or not self.require_same_origin():
+            return
+
         def action() -> None:
             if not self.path.startswith("/api/devices/"):
                 raise AppError("Nie znaleziono endpointu.", 404)
@@ -529,6 +610,9 @@ class Handler(BaseHTTPRequestHandler):
         self.handle_api(action)
 
     def do_DELETE(self) -> None:
+        if not self.require_login() or not self.require_same_origin():
+            return
+
         def action() -> None:
             if not self.path.startswith("/api/devices/"):
                 raise AppError("Nie znaleziono endpointu.", 404)
@@ -548,6 +632,8 @@ def main() -> None:
     args = parser.parse_args()
     server = ThreadingHTTPServer((args.host, args.port), Handler)
     print(f"Panel dostępny pod adresem http://{args.host}:{args.port}")
+    if not auth.configured():
+        print(f"Jednorazowy kod konfiguracji konta admin: {auth.setup_code}", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
