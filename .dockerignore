@@ -1,5 +1,6 @@
 **
 !app.py
+!auth.py
 !static/
 !static/**
 !docker-entrypoint.sh
